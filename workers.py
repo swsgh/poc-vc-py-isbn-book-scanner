@@ -1,9 +1,16 @@
-import cv2
-import requests
+import sys
 import time
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QImage
-from pyzbar.pyzbar import decode, ZBarSymbol
+import requests
+
+# Conditional compilation setup: only import desktop modules when not on Android
+ON_ANDROID = (sys.platform == "android") or hasattr(sys, "getandroidsdk")
+
+if not ON_ANDROID:
+    import cv2
+    from pyzbar.pyzbar import decode, ZBarSymbol
+
 
 class CameraWorker(QThread):
     frame_received = Signal(QImage)
@@ -17,6 +24,12 @@ class CameraWorker(QThread):
         self.last_scan_time = 0
 
     def run(self):
+        # NATIVE ANDROID OVERRIDE: Let QtMultimedia handle mobile lenses directly
+        if ON_ANDROID:
+            print("[Camera] Running on Android. System hooks managed via QtMultimedia.")
+            return
+
+        # DESKTOP FALLBACK: Run standard fast OpenCV track loop on PC
         self.cap = cv2.VideoCapture(0)
         while self.running:
             ret, frame = self.cap.read()
@@ -24,13 +37,9 @@ class CameraWorker(QThread):
                 continue
 
             frame = cv2.flip(frame, 1)
-
-            # FIXED: explicitly pass specific retail symbols to mute pdf417 line calculation assertions
             barcodes = decode(frame, symbols=[ZBarSymbol.EAN13, ZBarSymbol.UPCA])
             for barcode in barcodes:
                 barcode_data = barcode.data.decode("utf-8")
-
-                # FIXED: syntax typo corrected to explicitly look for valid ISBN token sizes
                 if len(barcode_data) in (10, 13) and barcode_data.isdigit():
                     current_time = time.time()
                     if barcode_data != self.last_scanned_barcode or (current_time - self.last_scan_time > 2.5):
@@ -52,6 +61,7 @@ class CameraWorker(QThread):
 
 
 class FetchBookWorker(QThread):
+    """Network metadata lookup remains universal across PC and Android."""
     book_fetched = Signal(str, str, str, bytes)
 
     def __init__(self, isbn: str):
@@ -59,9 +69,7 @@ class FetchBookWorker(QThread):
         self.isbn = isbn
 
     def run(self):
-        # Failover Strategy: Query Open Library first, fallback to Google Books on miss
         success, title, author, cover_bytes = self.fetch_from_open_library()
-
         if not success or title.startswith("Unknown Book"):
             success, title, author, cover_bytes = self.fetch_from_google_books()
 
