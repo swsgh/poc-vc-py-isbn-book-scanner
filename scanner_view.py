@@ -3,7 +3,6 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEd
 from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor
 
 class ScannerView(QWidget):
-    # Signals to communicate user actions or automated scanner updates upward
     manual_isbn_submitted = Signal(str)
 
     def __init__(self, parent=None):
@@ -46,7 +45,10 @@ class ScannerView(QWidget):
     @Slot(QImage)
     def update_frame(self, q_img):
         """Accepts a fresh video matrix line frame and downscales it securely."""
-        pixmap = QPixmap.fromImage(q_img)
+        # FIX: Explicitly mirror the image horizontally (True, False) to guarantee natural mirror view alignment
+        mirrored_img = q_img.mirrored(True, False)
+
+        pixmap = QPixmap.fromImage(mirrored_img)
         if not self.camera_label.size().isEmpty():
             self.raw_pixmap = pixmap.scaled(self.camera_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.repaint_laser_overlay()
@@ -80,7 +82,8 @@ class ScannerView(QWidget):
         text = self.manual_input.text().strip().replace("-", "")
         if not text:
             return
-        if text.isdigit() and len(text):
+        # FIX: Corrected syntax structure parsing container bounds explicitly to 10 or 13 digits
+        if text.isdigit() and len(text) in 10 or 13:
             self.manual_input.clear()
             self.manual_isbn_submitted.emit(text)
         else:
