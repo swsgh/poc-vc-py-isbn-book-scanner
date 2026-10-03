@@ -19,7 +19,10 @@ class ScannerView(QWidget):
         # Video Panel Container
         self.camera_label = QLabel("Initializing Video Feed...")
         self.camera_label.setAlignment(Qt.AlignCenter)
-        self.camera_label.setStyleSheet("background-color: #000000; border-radius: 6px;")
+
+        # CHANGED: Replaced hardcoded black (#000000) style rules with a native border frame.
+        # It inherits the background tint automatically from the window workspace palette.
+        self.camera_label.setStyleSheet("border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px;")
         self.camera_label.setMinimumHeight(320)
         layout.addWidget(self.camera_label, stretch=4)
 
@@ -39,13 +42,15 @@ class ScannerView(QWidget):
         # Dynamic Notification Label
         self.status_label = QLabel("Center an ISBN barcode to log a book")
         self.status_label.setAlignment(Qt.AlignCenter)
-        self.status_label.setStyleSheet("color: #a6e3a1; font-weight: bold; font-size: 14px; padding: 5px;")
+
+        # CHANGED: Removed the hardcoded text color rule. The text color now pulls
+        # from the parent's system style text sheets automatically.
+        self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; padding: 5px;")
         layout.addWidget(self.status_label, stretch=0)
 
     @Slot(QImage)
     def update_frame(self, q_img):
         """Accepts a fresh video matrix line frame and downscales it securely."""
-        # FIX: Explicitly mirror the image horizontally (True, False) to guarantee natural mirror view alignment
         mirrored_img = q_img.mirrored(True, False)
 
         pixmap = QPixmap.fromImage(mirrored_img)
@@ -82,8 +87,7 @@ class ScannerView(QWidget):
         text = self.manual_input.text().strip().replace("-", "")
         if not text:
             return
-        # FIX: Corrected syntax structure parsing container bounds explicitly to 10 or 13 digits
-        if text.isdigit() and len(text) in [10, 13]:
+        if text.isdigit() and len(text) in (10, 13):
             self.manual_input.clear()
             self.manual_isbn_submitted.emit(text)
         else:
@@ -93,3 +97,6 @@ class ScannerView(QWidget):
         self.status_label.setText(text)
         if style:
             self.status_label.setStyleSheet(style)
+        else:
+            # Clear inline styles back to default system layout hierarchy
+            self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; padding: 5px;")

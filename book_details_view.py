@@ -3,7 +3,6 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushBu
 from PySide6.QtGui import QImage, QPixmap, QFont
 
 class BookDetailsView(QWidget):
-    # Pass the ISBN string out when delete is confirmed
     delete_requested = Signal(str)
 
     def __init__(self, parent=None):
@@ -19,7 +18,9 @@ class BookDetailsView(QWidget):
         layout.setContentsMargins(5, 0, 5, 0)
 
         container = QFrame()
-        container.setStyleSheet("background-color: #11111b; border: 1px solid #45475a; border-radius: 8px;")
+        # CHANGED: Replaced hardcoded slate background values with a transparent style rule
+        # that lets it use native background colors.
+        container.setStyleSheet("border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;")
         container_layout = QVBoxLayout(container)
         container_layout.setContentsMargins(15, 15, 15, 15)
 
@@ -27,67 +28,60 @@ class BookDetailsView(QWidget):
         header_layout = QHBoxLayout()
         header_title = QLabel("Book Analytics")
         header_title.setFont(QFont("Segoe UI", 12, QFont.Bold))
-        header_title.setStyleSheet("border: none; color: #f5c2e7;")
+        header_title.setStyleSheet("border: none;")
         header_layout.addWidget(header_title)
 
         self.close_btn = QPushButton("✕")
         self.close_btn.setFixedSize(QSize(24, 24))
+        # CHANGED: Modern styling setup that scales naturally without forced palette sheets
         self.close_btn.setStyleSheet("""
             QPushButton {
-                background-color: #313244; color: #cdd6f4; border-radius: 12px;
-                padding: 0px; font-weight: bold; border: none;
+                border-radius: 12px; padding: 0px; font-weight: bold; border: 1px solid rgba(255, 255, 255, 0.2);
             }
-            QPushButton:hover { background-color: #f38ba8; color: #11111b; }
+            QPushButton:hover { background-color: rgba(255, 85, 85, 0.2); color: #ff5555; }
         """)
         self.close_btn.clicked.connect(self.hide)
         header_layout.addWidget(self.close_btn)
         container_layout.addLayout(header_layout)
 
-        # Cover Image
+        # Cover Graphic Label
         self.cover_label = QLabel()
         self.cover_label.setAlignment(Qt.AlignCenter)
         self.cover_label.setFixedSize(QSize(160, 220))
-        self.cover_label.setStyleSheet("background-color: #1e1e2e; border: 1px solid #313244; border-radius: 6px;")
+        self.cover_label.setStyleSheet("border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px;")
         container_layout.addWidget(self.cover_label, alignment=Qt.AlignCenter)
 
-        # Book Labels
+        # Info Text Rows
         self.title_label = QLabel("Select a book to inspect details")
         self.title_label.setFont(QFont("Segoe UI", 11, QFont.Bold))
         self.title_label.setWordWrap(True)
         self.title_label.setAlignment(Qt.AlignCenter)
-        self.title_label.setStyleSheet("border: none; padding-top: 10px; color: #cdd6f4;")
+        self.title_label.setStyleSheet("border: none; padding-top: 10px;")
         container_layout.addWidget(self.title_label)
 
         self.author_label = QLabel("")
         self.author_label.setWordWrap(True)
         self.author_label.setAlignment(Qt.AlignCenter)
-        self.author_label.setStyleSheet("border: none; color: #a6adc8; font-style: italic;")
+        self.author_label.setStyleSheet("border: none; font-style: italic; opacity: 0.8;")
         container_layout.addWidget(self.author_label)
 
         self.isbn_label = QLabel("")
         self.isbn_label.setAlignment(Qt.AlignCenter)
-        self.isbn_label.setStyleSheet("border: none; color: #89b4fa; font-family: monospace; font-size: 12px; padding-top: 5px;")
+        self.isbn_label.setStyleSheet("border: none; font-family: monospace; font-size: 12px; padding-top: 5px;")
         container_layout.addWidget(self.isbn_label)
 
         container_layout.addStretch()
 
-        # NEW: Delete Button Construction
+        # Delete Button Layout Setup
         self.delete_btn = QPushButton("🗑️ Remove from Shelf")
-        self.delete_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f38ba8; color: #11111b; border-radius: 6px;
-                padding: 10px; font-weight: bold; border: none;
-            }
-            QPushButton:hover { background-color: #eba0ac; }
-        """)
-        self.delete_btn.clicked.connect(self.on_delete_clicked)
+        self.delete_btn.setObjectName("clearBtn") # Hooks right into main window destructive rules sheet style
         container_layout.addWidget(self.delete_btn)
 
         layout.addWidget(container)
         self.hide()
 
     def show_book_details(self, isbn, title, author, cover_bytes):
-        self.current_isbn = isbn  # Cache active key reference
+        self.current_isbn = isbn
         self.isbn_label.setText(f"ISBN: {isbn}")
         self.title_label.setText(title)
         self.author_label.setText(f"by {author}")

@@ -7,7 +7,6 @@ import database as db
 
 class BookshelfView(QWidget):
     clear_library_requested = Signal()
-    # Signal passing: (isbn, title, author, cover_bytes) up to parent layout
     book_selected = Signal(str, str, str, bytes)
 
     def __init__(self, parent=None):
@@ -29,7 +28,6 @@ class BookshelfView(QWidget):
         self.grid_widget.setIconSize(QSize(100, 140))
         self.grid_widget.setMovement(QListWidget.Static)
 
-        # Connect click event mapping directly into our custom event forwarder
         self.grid_widget.itemClicked.connect(self.on_item_clicked)
         layout.addWidget(self.grid_widget)
 
@@ -59,7 +57,6 @@ class BookshelfView(QWidget):
         item.setText(f"{title}\n✍️ {author}")
         item.setTextAlignment(Qt.AlignCenter)
 
-        # Embed key database values inside the UI item element using custom data role flags
         item.setData(Qt.UserRole, isbn)
         item.setData(Qt.UserRole + 1, title)
         item.setData(Qt.UserRole + 2, author)
@@ -68,7 +65,6 @@ class BookshelfView(QWidget):
         self.grid_widget.insertItem(0, item)
 
     def on_item_clicked(self, item):
-        """Extracts data stored in item nodes and pushes it up to the orchestrator layer."""
         isbn = item.data(Qt.UserRole)
         title = item.data(Qt.UserRole + 1)
         author = item.data(Qt.UserRole + 2)
@@ -77,13 +73,20 @@ class BookshelfView(QWidget):
         if isbn:
             self.book_selected.emit(isbn, title, author, cover_bytes)
 
+    def remove_item_by_isbn(self, isbn):
+        for i in range(self.grid_widget.count()):
+            item = self.grid_widget.item(i)
+            if item.data(Qt.UserRole) == isbn:
+                self.grid_widget.takeItem(i)
+                break
+
     def export_data(self):
         rows = db.get_all_books()
         if not rows:
             QMessageBox.warning(self, "Export Failed", "There are no books in your database to export yet!")
             return
 
-        df = pd.DataFrame([{"ISBN": r, "Title": r, "Author": r} for r in rows])
+        df = pd.DataFrame([{"ISBN": r[0], "Title": r[1], "Author": r[2]} for r in rows])
         file_path, selected_filter = QFileDialog.getSaveFileName(
             self, "Export Book List", os.path.expanduser("~/Desktop"),
             "Excel Spreadsheet (*.xlsx);;CSV Document (*.csv)"
@@ -110,12 +113,3 @@ class BookshelfView(QWidget):
         if confirm == QMessageBox.Yes:
             self.grid_widget.clear()
             self.clear_library_requested.emit()
-
-    def remove_item_by_isbn(self, isbn):
-        """Finds and drops the matching list widget card row out of the UI tree view context."""
-        for i in range(self.grid_widget.count()):
-            item = self.grid_widget.item(i)
-            if item.data(Qt.UserRole) == isbn:
-                # Take item out of list management hierarchy
-                self.grid_widget.takeItem(i)
-                break
