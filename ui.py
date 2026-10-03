@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt, QTimer, Slot
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QApplication
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QApplication, QPushButton
 
 import database as db
 from workers import CameraWorker, FetchBookWorker
@@ -39,6 +39,8 @@ class MainWindow(QMainWindow):
                 border-radius: 6px; padding: 10px; font-weight: bold;
             }}
             QPushButton:hover {{ background-color: {highlight_color}; color: #ffffff; }}
+            QPushButton#toggleCamBtn {{ background-color: {base_bg}; border: 1px solid {highlight_color}; padding: 8px 15px; margin-bottom: 5px; }}
+            QPushButton#toggleCamBtn:hover {{ background-color: {highlight_color}; }}
             QPushButton#clearBtn {{ border: 1px solid #ff5555; color: #ff5555; }}
             QPushButton#clearBtn:hover {{ background-color: #ff5555; color: #ffffff; }}
             QLineEdit {{
@@ -53,11 +55,23 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(main_widget)
         main_layout = QVBoxLayout(main_widget)
 
+        # NEW: Top utility layout bar to hold our master layout toggle switch button
+        top_bar_layout = QHBoxLayout()
+        self.toggle_cam_btn = QPushButton("📷 Open Scanner Suite")
+        self.toggle_cam_btn.setObjectName("toggleCamBtn")
+        self.toggle_cam_btn.clicked.connect(self.toggle_scanner_view)
+        top_bar_layout.addWidget(self.toggle_cam_btn)
+        top_bar_layout.addStretch() # Right-align the layout button spacing
+        main_layout.addLayout(top_bar_layout)
+
         vertical_splitter = QSplitter(Qt.Vertical)
 
         self.scanner_view = ScannerView()
         self.bookshelf_view = BookshelfView()
         self.book_details_view = BookDetailsView()
+
+        # NEW: Hide camera container frame at application launch state explicitly
+        self.scanner_view.hide()
 
         shelf_container = QWidget()
         shelf_layout = QHBoxLayout(shelf_container)
@@ -68,14 +82,23 @@ class MainWindow(QMainWindow):
         vertical_splitter.addWidget(self.scanner_view)
         vertical_splitter.addWidget(shelf_container)
 
-        # FIXED: Explicit configuration lengths passed down to manage the splitter panels
-        vertical_splitter.setSizes([320, 580])
+        vertical_splitter.setSizes([250, 650])
         main_layout.addWidget(vertical_splitter)
 
         self.scanner_view.manual_isbn_submitted.connect(self.handle_barcode)
         self.bookshelf_view.clear_library_requested.connect(self.wipe_all_data)
         self.bookshelf_view.book_selected.connect(self.book_details_view.show_book_details)
         self.book_details_view.delete_requested.connect(self.remove_single_book)
+
+    # NEW: Slot function to toggle layout container states cleanly on demand
+    def toggle_scanner_view(self):
+        """Alternates the camera view visibility and re-labels the controller button text."""
+        if self.scanner_view.isVisible():
+            self.scanner_view.hide()
+            self.toggle_cam_btn.setText("📷 Open Scanner Suite")
+        else:
+            self.scanner_view.show()
+            self.toggle_cam_btn.setText("🙈 Hide Scanner Suite")
 
     def setup_camera(self):
         self.worker = CameraWorker()
