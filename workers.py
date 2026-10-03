@@ -1,5 +1,6 @@
 import cv2
 import requests
+import time
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QImage
 from pyzbar import pyzbar
@@ -12,27 +13,29 @@ class CameraWorker(QThread):
         super().__init__()
         self.running = True
         self.cap = None
+        self.last_scanned_barcode = None
+        self.last_scan_time = 0
 
     def run(self):
-        # Open local hardware webcam
         self.cap = cv2.VideoCapture(0)
         while self.running:
             ret, frame = self.cap.read()
             if not ret or frame is None:
                 continue
 
-            # 1. FIX: Flip horizontally BEFORE performing tracking/conversions
-            #frame = cv2.flip(frame, 1)
+            frame = cv2.flip(frame, 1)
 
-            # Scan the live frame matrix for any valid 1D barcode layouts
             barcodes = pyzbar.decode(frame)
             for barcode in barcodes:
                 barcode_data = barcode.data.decode("utf-8")
-                # 2. FIX: Restored valid length evaluation condition safely
                 if len(barcode_data) in [10, 13] and barcode_data.isdigit():
-                    self.barcode_detected.emit(barcode_data)
+                    current_time = time.time()
+                    # 2-second cooldown for the same barcode to avoid duplicate requests
+                    if barcode_data != self.last_scanned_barcode or (current_time - self.last_scan_time > 2.0):
+                        self.last_scanned_barcode = barcode_data
+                        self.last_scan_time = current_time
+                        self.barcode_detected.emit(barcode_data)
 
-            # Convert OpenCV frame to native Qt RGB Image format
             rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             h, w, ch = rgb_image.shape
             bytes_per_line = ch * w
@@ -47,8 +50,7 @@ class CameraWorker(QThread):
 
 
 class FetchBookWorker(QThread):
-    """Asynchronous worker to fetch book information from the Open Library API."""
-    book_fetched = Signal(str, str, str, bytes)  # isbn, title, author, cover_bytes
+    book_fetched = Signal(str, str, str, bytes)
 
     def __init__(self, isbn):
         super().__init__()
@@ -60,8 +62,7 @@ class FetchBookWorker(QThread):
         cover_bytes = b""
 
         try:
-            # 3. FIX: Clean, explicit parameter dictionary assignment to avoid malformed host parse breaks
-            url = "https://openlibrary.org/api/books"
+            url = "https://openlibrary.org"
             query_params = {
                 "bibkeys": f"ISBN:{self.isbn}",
                 "format": "json",
@@ -82,7 +83,7 @@ class FetchBookWorker(QThread):
                         author = ", ".join([a.get("name", "Unknown") for a in authors])
 
                     covers = book_info.get("cover", {})
-                    cover_url = covers.get("medium") or covers.get("small")
+                    cover_url = covers.get("medium") or covers.get("large") or covers.get("small")
 
                     if cover_url:
                         img_res = requests.get(cover_url, timeout=5)
