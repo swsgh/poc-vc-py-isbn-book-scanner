@@ -19,17 +19,18 @@ class ScannerView(QWidget):
         # Video Panel Container
         self.camera_label = QLabel("Initializing Video Feed...")
         self.camera_label.setAlignment(Qt.AlignCenter)
-
-        # CHANGED: Replaced hardcoded black (#000000) style rules with a native border frame.
-        # It inherits the background tint automatically from the window workspace palette.
         self.camera_label.setStyleSheet("border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px;")
-        self.camera_label.setMinimumHeight(320)
-        layout.addWidget(self.camera_label, stretch=4)
+
+        # 1. OPTIMIZE CAMERA PREVIEW BOUNDARIES:
+        # Instead of giving it room to stretch infinitely, we cap its height.
+        self.camera_label.setMinimumHeight(240)
+        self.camera_label.setMaximumHeight(260)
+        layout.addWidget(self.camera_label, stretch=0)
 
         # Keyboard Manual Search Bar Row
         manual_layout = QHBoxLayout()
         self.manual_input = QLineEdit()
-        self.manual_input.setPlaceholderText("Type an ISBN code manually (e.g. 9781449392178) and click Lookup...")
+        self.manual_input.setPlaceholderText("Type an ISBN code manually...")
         self.manual_input.returnPressed.connect(self.submit_manual_isbn)
         manual_layout.addWidget(self.manual_input)
 
@@ -42,11 +43,14 @@ class ScannerView(QWidget):
         # Dynamic Notification Label
         self.status_label = QLabel("Center an ISBN barcode to log a book")
         self.status_label.setAlignment(Qt.AlignCenter)
-
-        # CHANGED: Removed the hardcoded text color rule. The text color now pulls
-        # from the parent's system style text sheets automatically.
-        self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; padding: 5px;")
+        self.status_label.setStyleSheet("font-weight: bold; font-size: 13px; padding: 3px;")
         layout.addWidget(self.status_label, stretch=0)
+
+        # 2. ENFORCE AGGRESSIVE WIDGET MAXIMUM LIMIT:
+        # This tells the main QSplitter layout shell that this complete widget
+        # should only ever occupy its exact minimum required layout size.
+        from PySide6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
 
     @Slot(QImage)
     def update_frame(self, q_img):

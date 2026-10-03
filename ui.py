@@ -87,8 +87,8 @@ class MainWindow(QMainWindow):
         vertical_splitter.addWidget(self.scanner_view)
         vertical_splitter.addWidget(shelf_container)
 
-        # FIXED: Pass a standard layout list boundary definition to allocate initial workspace sizes
-        vertical_splitter.setSizes([380, 520])
+        # Ensure the bottom layout panel (index 1) gets almost all initial pixel space weight
+        vertical_splitter.setSizes([280, 620])
         main_layout.addWidget(vertical_splitter)
 
         # Inter-widget signal connections
