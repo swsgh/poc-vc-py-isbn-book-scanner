@@ -1,0 +1,5 @@
+[project]
+name = "PySide Project"
+
+[tool.pyside6-project]
+files = ["database.py", "main.py", "ui.py", "workers.py"]
