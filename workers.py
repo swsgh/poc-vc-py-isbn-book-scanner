@@ -28,9 +28,9 @@ class CameraWorker(QThread):
             barcodes = pyzbar.decode(frame)
             for barcode in barcodes:
                 barcode_data = barcode.data.decode("utf-8")
-                if len(barcode_data) in [10, 13] and barcode_data.isdigit():
+                # FIXED: Core bounding constraint logic safely updated to tuple check
+                if len(barcode_data) in (10, 13) and barcode_data.isdigit():
                     current_time = time.time()
-                    # 2-second cooldown for the same barcode to avoid duplicate requests
                     if barcode_data != self.last_scanned_barcode or (current_time - self.last_scan_time > 2.0):
                         self.last_scanned_barcode = barcode_data
                         self.last_scan_time = current_time
@@ -50,46 +50,83 @@ class CameraWorker(QThread):
 
 
 class FetchBookWorker(QThread):
-    book_fetched = Signal(str, str, str, bytes)
+    """Asynchronous worker that cycles through free API backends if one fails."""
+    book_fetched = Signal(str, str, str, bytes)  # isbn, title, author, cover_bytes
 
     def __init__(self, isbn):
         super().__init__()
         self.isbn = isbn
 
     def run(self):
-        title = f"Unknown Book ({self.isbn})"
-        author = "Unknown Author"
-        cover_bytes = b""
+        # 1. TRY PRIMARY DATABASE: Open Library API
+        print(f"[API] Querying Primary Database (Open Library) for ISBN {self.isbn}...")
+        success, title, author, cover_bytes = self.fetch_from_open_library()
 
-        try:
-            url = "https://openlibrary.org"
-            query_params = {
-                "bibkeys": f"ISBN:{self.isbn}",
-                "format": "json",
-                "jscmd": "data"
-            }
+        # 2. TRY SECONDARY DATABASE FALLBACK: Google Books API
+        if not success or title.startswith("Unknown Book"):
+            print(f"[API] Open Library missed/failed. Falling back to Google Books...")
+            success, title, author, cover_bytes = self.fetch_from_google_books()
 
-            response = requests.get(url, params=query_params, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                book_key = f"ISBN:{self.isbn}"
-
-                if book_key in data:
-                    book_info = data[book_key]
-                    title = book_info.get("title", title)
-
-                    authors = book_info.get("authors", [])
-                    if authors:
-                        author = ", ".join([a.get("name", "Unknown") for a in authors])
-
-                    covers = book_info.get("cover", {})
-                    cover_url = covers.get("medium") or covers.get("large") or covers.get("small")
-
-                    if cover_url:
-                        img_res = requests.get(cover_url, timeout=5)
-                        if img_res.status_code == 200:
-                            cover_bytes = img_res.content
-        except Exception as e:
-            print(f"Network error searching ISBN {self.isbn}: {e}")
+        # If everything fails, deliver a structured fallback card
+        if not success:
+            title = f"Unknown Book ({self.isbn})"
+            author = "Unknown Author"
+            cover_bytes = b""
 
         self.book_fetched.emit(self.isbn, title, author, cover_bytes)
+
+    def fetch_from_open_library(self):
+        try:
+            url = "https://openlibrary.org/api/books"
+            params = {"bibkeys": f"ISBN:{self.isbn}", "format": "json", "jscmd": "data"}
+            res = requests.get(url, params=params, timeout=4)
+
+            if res.status_code == 200:
+                data = res.json()
+                key = f"ISBN:{self.isbn}"
+                if key in data:
+                    info = data[key]
+                    title = info.get("title", "Unknown Title")
+                    authors = ", ".join([a.get("name", "Unknown") for a in info.get("authors", [])]) or "Unknown Author"
+
+                    # Fetch cover if available
+                    cover_bytes = b""
+                    cover_url = info.get("cover", {}).get("medium") or info.get("cover", {}).get("small")
+                    if cover_url:
+                        img_res = requests.get(cover_url, timeout=4)
+                        if img_res.status_code == 200:
+                            cover_bytes = img_res.content
+                    return True, title, authors, cover_bytes
+        except Exception as e:
+            print(f"[API Error] Open Library exception: {e}")
+        return False, "", "", b""
+
+    def fetch_from_google_books(self):
+        try:
+            # Query Google Books Volume Lookup using native query filters
+            url = "https://www.googleapis.com/books/v1/volumes"
+            params = {"q": f"isbn:{self.isbn}"}
+            res = requests.get(url, params=params, timeout=4)
+
+            if res.status_code == 200:
+                data = res.json()
+                if "items" in data and len(data["items"]) > 0:
+                    volume_info = data["items"][0].get("volumeInfo", {})
+                    title = volume_info.get("title", "Unknown Title")
+                    authors = ", ".join(volume_info.get("authors", [])) or "Unknown Author"
+
+                    # Fetch thumbnail artwork asset
+                    cover_bytes = b""
+                    img_links = volume_info.get("imageLinks", {})
+                    cover_url = img_links.get("thumbnail") or img_links.get("smallThumbnail")
+                    if cover_url:
+                        # Google uses http paths occasionally; force secure routing safely
+                        if cover_url.startswith("http://"):
+                            cover_url = cover_url.replace("http://", "https://")
+                        img_res = requests.get(cover_url, timeout=4)
+                        if img_res.status_code == 200:
+                            cover_bytes = img_res.content
+                    return True, title, authors, cover_bytes
+        except Exception as e:
+            print(f"[API Error] Google Books exception: {e}")
+        return False, "", "", b""
