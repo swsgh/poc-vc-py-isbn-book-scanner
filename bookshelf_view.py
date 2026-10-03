@@ -8,7 +8,6 @@ from PySide6.QtGui import QImage, QPixmap, QFont
 import database as db
 
 class BookshelfView(QWidget):
-    clear_library_requested = Signal()
     book_selected = Signal(str, str, str, bytes)
 
     def __init__(self, parent=None):
@@ -34,26 +33,20 @@ class BookshelfView(QWidget):
         self.grid_widget.itemClicked.connect(self.on_item_clicked)
         layout.addWidget(self.grid_widget)
 
-        # NEW: Live Filter Search Field Layout Container
+        # Live Filter Search Field Layout Container
         filter_layout = QHBoxLayout()
         self.filter_input = QLineEdit()
         self.filter_input.setPlaceholderText("🔎 Type to filter bookshelf by title or author name...")
-        # Connect text alteration signals to drive our loop filter mechanism instantly
         self.filter_input.textChanged.connect(self.filter_bookshelf_items)
         filter_layout.addWidget(self.filter_input)
         layout.addLayout(filter_layout)
 
-        # Operational Footer Actions Row
+        # Operational Footer Actions Row (Clear button removed)
         btn_layout = QHBoxLayout()
         self.export_btn = QPushButton("📁 Export Data Sheet")
         self.export_btn.setObjectName("exportBtn")
         self.export_btn.clicked.connect(self.export_data)
         btn_layout.addWidget(self.export_btn)
-
-        self.clear_btn = QPushButton("🗑️ Clear Library Grid")
-        self.clear_btn.setObjectName("clearBtn")
-        self.clear_btn.clicked.connect(self.clear_library_action)
-        btn_layout.addWidget(self.clear_btn)
         layout.addLayout(btn_layout)
 
     def render_book_item(self, title: str, author: str, cover_bytes: bytes, isbn: str = ""):
@@ -70,29 +63,22 @@ class BookshelfView(QWidget):
         item.setText(f"{title}\n✍️ {author}")
         item.setTextAlignment(Qt.AlignCenter)
 
-        # Embed key database values inside the UI item element using custom data role flags
         item.setData(Qt.UserRole, isbn)
         item.setData(Qt.UserRole + 1, title)
         item.setData(Qt.UserRole + 2, author)
         item.setData(Qt.UserRole + 3, cover_bytes)
 
         self.grid_widget.insertItem(0, item)
-
-        # Ensure new items immediately respect any active query filter criteria string
         self.filter_bookshelf_items(self.filter_input.text())
 
     def filter_bookshelf_items(self, text: str):
-        """Iterates over UI components and toggles node visibilities based on query strings."""
         search_query = text.strip().lower()
-
         for i in range(self.grid_widget.count()):
             item = self.grid_widget.item(i)
-            # Pull underlying book parameters out of data cache roles securely
             title = str(item.data(Qt.UserRole + 1)).lower()
             author = str(item.data(Qt.UserRole + 2)).lower()
             isbn = str(item.data(Qt.UserRole)).lower()
 
-            # Match query string against Title, Author, or ISBN string fields
             if search_query in title or search_query in author or search_query in isbn:
                 item.setHidden(False)
             else:
@@ -119,7 +105,7 @@ class BookshelfView(QWidget):
             QMessageBox.warning(self, "Export Failed", "There are no books in your database to export yet!")
             return
 
-        df = pd.DataFrame([{"ISBN": r[0], "Title": r[1], "Author": r[2]} for r in rows])
+        df = pd.DataFrame([{"ISBN": r, "Title": r, "Author": r} for r in rows])
         file_path, selected_filter = QFileDialog.getSaveFileName(
             self, "Export Book List", os.path.expanduser("~/Desktop"),
             "Excel Spreadsheet (*.xlsx);;CSV Document (*.csv)"
@@ -137,13 +123,7 @@ class BookshelfView(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "Export Error", f"Could not export data: {e}")
 
-    def clear_library_action(self):
-        confirm = QMessageBox.question(
-            self, "Clear Entire Library?",
-            "Are you completely sure you want to purge all books from the database and UI grid view?",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        if confirm == QMessageBox.Yes:
-            self.filter_input.clear()
-            self.grid_widget.clear()
-            self.clear_library_requested.emit()
+    def clear_ui_grid(self):
+        """Called externally by UI orchestrator to clear visual elements."""
+        self.filter_input.clear()
+        self.grid_widget.clear()
