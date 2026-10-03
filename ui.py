@@ -22,6 +22,7 @@ class MainWindow(QMainWindow):
         self.load_books_from_db()
         self.setup_camera()
         self.setup_laser_timer()
+        self.status_reset_timer = None
 
     def setup_ui(self):
         system_palette = QApplication.palette()
@@ -146,6 +147,10 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def handle_barcode(self, isbn: str):
+        # Kill any pending text resets so they don't overwrite current status updates
+        if self.status_reset_timer and self.status_reset_timer.isActive():
+            self.status_reset_timer.stop()
+
         if isbn not in self.scanned_isbns:
             self.scanned_isbns.add(isbn)
             self.scanner_view.set_status(f"🔍 Digging up metadata for ISBN: {isbn}...")
@@ -157,15 +162,31 @@ class MainWindow(QMainWindow):
             fetcher.start()
         else:
             self.scanner_view.set_status(f"💡 ISBN {isbn} already exists on shelf.", "color: #ffaa55;")
-            QTimer.singleShot(2000, lambda: self.scanner_view.set_status("Center an ISBN barcode to log a book"))
+
+            # Use a reusable single shot timer instance rather than an un-trackable lambda closure
+            self.status_reset_timer = QTimer()
+            self.status_reset_timer.setSingleShot(True)
+            self.status_reset_timer.timeout.connect(
+                lambda: self.scanner_view.set_status("Center an ISBN barcode to log a book")
+            )
+            self.status_reset_timer.start(2000)
 
     @Slot(str, str, str, bytes)
     def save_and_render_book(self, isbn: str, title: str, author: str, cover_bytes: bytes):
+        if self.status_reset_timer and self.status_reset_timer.isActive():
+            self.status_reset_timer.stop()
+
         db.save_book(isbn, title, author, cover_bytes)
         self.bookshelf_view.render_book_item(title, author, cover_bytes, isbn)
         self.scanner_view.set_status(f"✅ Logged: {title}")
         self.book_details_view.show_book_details(isbn, title, author, cover_bytes)
-        QTimer.singleShot(2500, lambda: self.scanner_view.set_status("Center an ISBN barcode to log a book"))
+
+        self.status_reset_timer = QTimer()
+        self.status_reset_timer.setSingleShot(True)
+        self.status_reset_timer.timeout.connect(
+            lambda: self.scanner_view.set_status("Center an ISBN barcode to log a book")
+        )
+        self.status_reset_timer.start(2500)
 
     def remove_single_book(self, isbn: str):
         if isbn in self.scanned_isbns:
