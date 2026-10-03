@@ -4,6 +4,7 @@ import time
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QImage
 from pyzbar import pyzbar
+from pyzbar.pyzbar import ZBarSymbol
 
 class CameraWorker(QThread):
     frame_received = Signal(QImage)
@@ -25,7 +26,7 @@ class CameraWorker(QThread):
 
             frame = cv2.flip(frame, 1)
 
-            barcodes = pyzbar.decode(frame)
+            barcodes = pyzbar.decode(frame, symbols=[ZBarSymbol.EAN13, ZBarSymbol.UPCA])
             for barcode in barcodes:
                 barcode_data = barcode.data.decode("utf-8")
                 # FIXED: Core bounding constraint logic safely updated to tuple check
