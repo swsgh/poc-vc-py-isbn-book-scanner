@@ -18,13 +18,10 @@ class BookDetailsView(QWidget):
         layout.setContentsMargins(5, 0, 5, 0)
 
         container = QFrame()
-        # CHANGED: Replaced hardcoded slate background values with a transparent style rule
-        # that lets it use native background colors.
         container.setStyleSheet("border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;")
         container_layout = QVBoxLayout(container)
         container_layout.setContentsMargins(15, 15, 15, 15)
 
-        # Header Row
         header_layout = QHBoxLayout()
         header_title = QLabel("Book Analytics")
         header_title.setFont(QFont("Segoe UI", 12, QFont.Bold))
@@ -33,25 +30,20 @@ class BookDetailsView(QWidget):
 
         self.close_btn = QPushButton("✕")
         self.close_btn.setFixedSize(QSize(24, 24))
-        # CHANGED: Modern styling setup that scales naturally without forced palette sheets
         self.close_btn.setStyleSheet("""
-            QPushButton {
-                border-radius: 12px; padding: 0px; font-weight: bold; border: 1px solid rgba(255, 255, 255, 0.2);
-            }
+            QPushButton { border-radius: 12px; padding: 0px; font-weight: bold; border: 1px solid rgba(255, 255, 255, 0.2); }
             QPushButton:hover { background-color: rgba(255, 85, 85, 0.2); color: #ff5555; }
         """)
         self.close_btn.clicked.connect(self.hide)
         header_layout.addWidget(self.close_btn)
         container_layout.addLayout(header_layout)
 
-        # Cover Graphic Label
         self.cover_label = QLabel()
         self.cover_label.setAlignment(Qt.AlignCenter)
         self.cover_label.setFixedSize(QSize(160, 220))
         self.cover_label.setStyleSheet("border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px;")
         container_layout.addWidget(self.cover_label, alignment=Qt.AlignCenter)
 
-        # Info Text Rows
         self.title_label = QLabel("Select a book to inspect details")
         self.title_label.setFont(QFont("Segoe UI", 11, QFont.Bold))
         self.title_label.setWordWrap(True)
@@ -72,15 +64,15 @@ class BookDetailsView(QWidget):
 
         container_layout.addStretch()
 
-        # Delete Button Layout Setup
-        self.delete_btn = QPushButton("🗑️ Remove from Shelf")
-        self.delete_btn.setObjectName("clearBtn") # Hooks right into main window destructive rules sheet style
+        self.delete_btn = QPushButton("🗑| Remove from Shelf")
+        self.delete_btn.setObjectName("clearBtn")
+        self.delete_btn.clicked.connect(self.on_delete_clicked)
         container_layout.addWidget(self.delete_btn)
 
         layout.addWidget(container)
         self.hide()
 
-    def show_book_details(self, isbn, title, author, cover_bytes):
+    def show_book_details(self, isbn: str, title: str, author: str, cover_bytes: bytes):
         self.current_isbn = isbn
         self.isbn_label.setText(f"ISBN: {isbn}")
         self.title_label.setText(title)
@@ -101,10 +93,9 @@ class BookDetailsView(QWidget):
     def on_delete_clicked(self):
         if not self.current_isbn:
             return
-
         confirm = QMessageBox.question(
             self, "Remove Book",
-            f"Are you sure you want to remove this book from your collection?",
+            "Are you sure you want to remove this book from your collection?",
             QMessageBox.Yes | QMessageBox.No
         )
         if confirm == QMessageBox.Yes:

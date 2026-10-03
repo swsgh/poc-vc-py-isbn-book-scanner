@@ -3,7 +3,7 @@ import sqlite3
 DB_NAME = "books.db"
 
 def init_db():
-    """Initializes the local SQLite database to store book data and cover images."""
+    """Initializes the local SQLite database to store book metadata and cover images."""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("""
@@ -17,8 +17,8 @@ def init_db():
     conn.commit()
     conn.close()
 
-def save_book(isbn, title, author, cover_bytes):
-    """Inserts or updates a book entry in the database."""
+def save_book(isbn: str, title: str, author: str, cover_bytes: bytes):
+    """Inserts or overwrites a book record in the local database storage."""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     try:
@@ -28,12 +28,12 @@ def save_book(isbn, title, author, cover_bytes):
         )
         conn.commit()
     except Exception as e:
-        print(f"Database write error: {e}")
+        print(f"[DB Error] Failed to write record: {e}")
     finally:
         conn.close()
 
 def get_all_books():
-    """Retrieves all stored books from the database."""
+    """Retrieves all stored books from the shelf database collection rows."""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("SELECT isbn, title, author, cover_blob FROM books")
@@ -41,22 +41,22 @@ def get_all_books():
     conn.close()
     return rows
 
-def clear_all_books():
-    """Purges the book table entirely."""
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM books")
-    conn.commit()
-    conn.close()
-
-def delete_book_by_isbn(isbn):
-    """Deletes a single book entry from the database by its ISBN."""
+def delete_book_by_isbn(isbn: str):
+    """Deletes a single book entry from the database matching the exact ISBN key."""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     try:
         cursor.execute("DELETE FROM books WHERE isbn = ?", (isbn,))
         conn.commit()
     except Exception as e:
-        print(f"Database deletion error: {e}")
+        print(f"[DB Error] Failed to remove record for ISBN {isbn}: {e}")
     finally:
         conn.close()
+
+def clear_all_books():
+    """Wipes all rows inside the library books collection database."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM books")
+    conn.commit()
+    conn.close()

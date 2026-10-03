@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from PySide6.QtCore import Qt, QSize, Signal, Slot
+from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget, QListWidgetItem, QFileDialog, QMessageBox
 from PySide6.QtGui import QImage, QPixmap, QFont
 import database as db
@@ -27,7 +27,6 @@ class BookshelfView(QWidget):
         self.grid_widget.setSpacing(15)
         self.grid_widget.setIconSize(QSize(100, 140))
         self.grid_widget.setMovement(QListWidget.Static)
-
         self.grid_widget.itemClicked.connect(self.on_item_clicked)
         layout.addWidget(self.grid_widget)
 
@@ -43,7 +42,7 @@ class BookshelfView(QWidget):
         btn_layout.addWidget(self.clear_btn)
         layout.addLayout(btn_layout)
 
-    def render_book_item(self, title, author, cover_bytes, isbn=""):
+    def render_book_item(self, title: str, author: str, cover_bytes: bytes, isbn: str = ""):
         pixmap = QPixmap()
         if cover_bytes:
             pixmap.loadFromData(cover_bytes)
@@ -64,16 +63,15 @@ class BookshelfView(QWidget):
 
         self.grid_widget.insertItem(0, item)
 
-    def on_item_clicked(self, item):
+    def on_item_clicked(self, item: QListWidgetItem):
         isbn = item.data(Qt.UserRole)
         title = item.data(Qt.UserRole + 1)
         author = item.data(Qt.UserRole + 2)
         cover_bytes = item.data(Qt.UserRole + 3)
-
         if isbn:
             self.book_selected.emit(isbn, title, author, cover_bytes)
 
-    def remove_item_by_isbn(self, isbn):
+    def remove_item_by_isbn(self, isbn: str):
         for i in range(self.grid_widget.count()):
             item = self.grid_widget.item(i)
             if item.data(Qt.UserRole) == isbn:
@@ -86,6 +84,7 @@ class BookshelfView(QWidget):
             QMessageBox.warning(self, "Export Failed", "There are no books in your database to export yet!")
             return
 
+        # Explicit list conversion map to bypass dataframe alignment limits
         df = pd.DataFrame([{"ISBN": r[0], "Title": r[1], "Author": r[2]} for r in rows])
         file_path, selected_filter = QFileDialog.getSaveFileName(
             self, "Export Book List", os.path.expanduser("~/Desktop"),
@@ -102,7 +101,7 @@ class BookshelfView(QWidget):
                     df.to_csv(file_path, index=False, encoding='utf-8')
                 QMessageBox.information(self, "Success!", f"Library exported cleanly to:\n{file_path}")
             except Exception as e:
-                QMessageBox.critical(self, "Export Error", f"Could not write file layout structure:\n{str(e)}")
+                QMessageBox.critical(self, "Export Error", f"Could not export data: {e}")
 
     def clear_library_action(self):
         confirm = QMessageBox.question(
