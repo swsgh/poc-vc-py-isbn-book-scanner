@@ -1,12 +1,14 @@
 import os
 import pandas as pd
-from PySide6.QtCore import Qt, QSize, Signal
+from PySide6.QtCore import Qt, QSize, Signal, Slot
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget, QListWidgetItem, QFileDialog, QMessageBox
 from PySide6.QtGui import QImage, QPixmap, QFont
 import database as db
 
 class BookshelfView(QWidget):
     clear_library_requested = Signal()
+    # Signal passing: (isbn, title, author, cover_bytes) up to parent layout
+    book_selected = Signal(str, str, str, bytes)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -20,16 +22,17 @@ class BookshelfView(QWidget):
         log_title.setFont(QFont("Segoe UI", 12, QFont.Bold))
         layout.addWidget(log_title)
 
-        # Configure Grid Layout Matrix View
         self.grid_widget = QListWidget()
         self.grid_widget.setViewMode(QListWidget.IconMode)
         self.grid_widget.setResizeMode(QListWidget.Adjust)
         self.grid_widget.setSpacing(15)
         self.grid_widget.setIconSize(QSize(100, 140))
         self.grid_widget.setMovement(QListWidget.Static)
+
+        # Connect click event mapping directly into our custom event forwarder
+        self.grid_widget.itemClicked.connect(self.on_item_clicked)
         layout.addWidget(self.grid_widget)
 
-        # Data Actions Footer Row
         btn_layout = QHBoxLayout()
         self.export_btn = QPushButton("📁 Export Data Sheet")
         self.export_btn.setObjectName("exportBtn")
@@ -42,7 +45,7 @@ class BookshelfView(QWidget):
         btn_layout.addWidget(self.clear_btn)
         layout.addLayout(btn_layout)
 
-    def render_book_item(self, title, author, cover_bytes):
+    def render_book_item(self, title, author, cover_bytes, isbn=""):
         pixmap = QPixmap()
         if cover_bytes:
             pixmap.loadFromData(cover_bytes)
@@ -55,7 +58,24 @@ class BookshelfView(QWidget):
         item.setIcon(pixmap)
         item.setText(f"{title}\n✍️ {author}")
         item.setTextAlignment(Qt.AlignCenter)
+
+        # Embed key database values inside the UI item element using custom data role flags
+        item.setData(Qt.UserRole, isbn)
+        item.setData(Qt.UserRole + 1, title)
+        item.setData(Qt.UserRole + 2, author)
+        item.setData(Qt.UserRole + 3, cover_bytes)
+
         self.grid_widget.insertItem(0, item)
+
+    def on_item_clicked(self, item):
+        """Extracts data stored in item nodes and pushes it up to the orchestrator layer."""
+        isbn = item.data(Qt.UserRole)
+        title = item.data(Qt.UserRole + 1)
+        author = item.data(Qt.UserRole + 2)
+        cover_bytes = item.data(Qt.UserRole + 3)
+
+        if isbn:
+            self.book_selected.emit(isbn, title, author, cover_bytes)
 
     def export_data(self):
         rows = db.get_all_books()
@@ -63,7 +83,7 @@ class BookshelfView(QWidget):
             QMessageBox.warning(self, "Export Failed", "There are no books in your database to export yet!")
             return
 
-        df = pd.DataFrame([{"ISBN": r[0], "Title": r[1], "Author": r[2]} for r in rows])
+        df = pd.DataFrame([{"ISBN": r, "Title": r, "Author": r} for r in rows])
         file_path, selected_filter = QFileDialog.getSaveFileName(
             self, "Export Book List", os.path.expanduser("~/Desktop"),
             "Excel Spreadsheet (*.xlsx);;CSV Document (*.csv)"

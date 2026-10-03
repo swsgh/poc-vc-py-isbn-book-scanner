@@ -1,16 +1,17 @@
 from PySide6.QtCore import Qt, QTimer, Slot
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QSplitter
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter
 
 import database as db
 from workers import CameraWorker, FetchBookWorker
 from scanner_view import ScannerView
 from bookshelf_view import BookshelfView
+from book_details_view import BookDetailsView
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("VibeScan Studio - Split Architecture")
-        self.resize(800, 900)
+        self.setWindowTitle("VibeScan Studio - Dashboard Architecture")
+        self.resize(950, 900)  # Width bumped up to handle side-by-side panels seamlessly
         self.scanned_isbns = set()
         self._active_workers = []
 
@@ -21,7 +22,6 @@ class MainWindow(QMainWindow):
         self.setup_laser_timer()
 
     def setup_ui(self):
-        # Master centralized stylesheet definitions
         self.setStyleSheet("""
             QMainWindow { background-color: #1e1e2e; }
             QWidget { color: #cdd6f4; font-family: 'Segoe UI', sans-serif; font-size: 13px; }
@@ -47,25 +47,34 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(main_widget)
         main_layout = QVBoxLayout(main_widget)
 
-        splitter = QSplitter(Qt.Vertical)
+        vertical_splitter = QSplitter(Qt.Vertical)
 
-        # Instantiating our newly decoupled custom visual sub-widgets
+        # Upper block setup: Camera tracking suite
         self.scanner_view = ScannerView()
-        self.bookshelf_view = BookshelfView()
+        vertical_splitter.addWidget(self.scanner_view)
 
-        # Connect signals passing out of sub-widgets to main window controller slots
+        # Lower block setup: Bookshelf grid alongside the new inspector panel widget
+        shelf_container = QWidget()
+        shelf_layout = QHBoxLayout(shelf_container)
+        shelf_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.bookshelf_view = BookshelfView()
+        self.book_details_view = BookDetailsView()
+
+        shelf_layout.addWidget(self.bookshelf_view, stretch=3)
+        shelf_layout.addWidget(self.book_details_view, stretch=1)
+        vertical_splitter.addWidget(shelf_container)
+
+        # Inter-widget signals and slots bindings
         self.scanner_view.manual_isbn_submitted.connect(self.handle_barcode)
         self.bookshelf_view.clear_library_requested.connect(self.wipe_all_data)
+        self.bookshelf_view.book_selected.connect(self.book_details_view.show_book_details)
 
-        # Assemble layout architecture onto the central control panel
-        splitter.addWidget(self.scanner_view)
-        splitter.addWidget(self.bookshelf_view)
-        splitter.setSizes([380, 520])
-        main_layout.addWidget(splitter)
+        vertical_splitter.setSizes([380, 520])
+        main_layout.addWidget(vertical_splitter)
 
     def setup_camera(self):
         self.worker = CameraWorker()
-        # Route background video frames straight down to the dedicated display widget
         self.worker.frame_received.connect(self.scanner_view.update_frame)
         self.worker.barcode_detected.connect(self.handle_barcode)
         self.worker.start()
@@ -80,7 +89,7 @@ class MainWindow(QMainWindow):
         for row in rows:
             isbn, title, author, cover_blob = row
             self.scanned_isbns.add(isbn)
-            self.bookshelf_view.render_book_item(title, author, cover_blob)
+            self.bookshelf_view.render_book_item(title, author, cover_blob, isbn)
 
     @Slot(str)
     def handle_barcode(self, isbn):
@@ -100,13 +109,17 @@ class MainWindow(QMainWindow):
     @Slot(str, str, str, bytes)
     def save_and_render_book(self, isbn, title, author, cover_bytes):
         db.save_book(isbn, title, author, cover_bytes)
-        self.bookshelf_view.render_book_item(title, author, cover_bytes)
+        self.bookshelf_view.render_book_item(title, author, cover_bytes, isbn)
         self.scanner_view.set_status(f"✅ Logged: {title}", "color: #a6e3a1;")
+
+        # Proactively fire details update on the sidebar for immediate inspection
+        self.book_details_view.show_book_details(isbn, title, author, cover_bytes)
         QTimer.singleShot(2500, lambda: self.scanner_view.set_status("Center an ISBN barcode to log a book", "color: #a6e3a1;"))
 
     def wipe_all_data(self):
         self.scanned_isbns.clear()
         db.clear_all_books()
+        self.book_details_view.hide()
         self.scanner_view.set_status("🧹 Library database completely wiped.", "color: #f38ba8;")
 
     def _cleanup_worker(self, worker):
