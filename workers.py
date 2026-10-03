@@ -82,7 +82,7 @@ class FetchBookWorker(QThread):
 
     def fetch_from_open_library(self):
         try:
-            url = "https://openlibrary.org"
+            url = "https://openlibrary.org/api/books"
             params = {"bibkeys": f"ISBN:{self.isbn}", "format": "json", "jscmd": "data"}
             res = requests.get(url, params=params, timeout=4)
             if res.status_code == 200:
@@ -106,7 +106,7 @@ class FetchBookWorker(QThread):
 
     def fetch_from_google_books(self):
         try:
-            url = "https://googleapis.com"
+            url = "https://googleapis.com/books/v1/volumes"
             params = {"q": f"isbn:{self.isbn}"}
             res = requests.get(url, params=params, timeout=4)
             if res.status_code == 200:
