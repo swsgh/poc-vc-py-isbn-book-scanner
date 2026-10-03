@@ -13,7 +13,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("VibeScan Studio - Database Book Shelf")
-        self.resize(1150, 720)
+        self.resize(800, 850)  # Adjusted window proportions to complement vertical stack layouts
         self.scanned_isbns = set()
         self._active_workers = []
 
@@ -41,38 +41,46 @@ class MainWindow(QMainWindow):
 
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
-        main_layout = QHBoxLayout(main_widget)
-        splitter = QSplitter(Qt.Horizontal)
 
-        # Left Feed Column
-        left_frame = QFrame()
-        left_layout = QVBoxLayout(left_frame)
+        # Changed core structural frame layout context to vertical orientation
+        main_layout = QVBoxLayout(main_widget)
+
+        # Core change: Swapped orientation axis to handle items vertically
+        splitter = QSplitter(Qt.Vertical)
+
+        # Top Container: Live Video Feed & Barcode Track Zone
+        top_frame = QFrame()
+        top_layout = QVBoxLayout(top_frame)
+
         self.camera_label = QLabel("Initializing Video Feed...")
         self.camera_label.setAlignment(Qt.AlignCenter)
         self.camera_label.setStyleSheet("background-color: #000000; border-radius: 6px;")
-        left_layout.addWidget(self.camera_label, stretch=4)
+        # Fix height constraints on camera preview container context to keep frame manageable
+        self.camera_label.setMinimumHeight(280)
+        top_layout.addWidget(self.camera_label, stretch=4)
 
         self.status_label = QLabel("Center an ISBN barcode to log a book")
         self.status_label.setAlignment(Qt.AlignCenter)
-        self.status_label.setStyleSheet("color: #a6e3a1; font-weight: bold; font-size: 14px;")
-        left_layout.addWidget(self.status_label, stretch=0)
+        self.status_label.setStyleSheet("color: #a6e3a1; font-weight: bold; font-size: 14px; padding: 5px;")
+        top_layout.addWidget(self.status_label, stretch=0)
 
-        # Right Grid Column
-        right_frame = QFrame()
-        right_layout = QVBoxLayout(right_frame)
+        # Bottom Container: Interactive Digital Grid Bookshelf
+        bottom_frame = QFrame()
+        bottom_layout = QVBoxLayout(bottom_frame)
+
         log_title = QLabel("Saved Books Shelf Grid")
-        log_title.setFont(QFont("Segoe UI", 14, QFont.Bold))
-        right_layout.addWidget(log_title)
+        log_title.setFont(QFont("Segoe UI", 12, QFont.Bold))
+        bottom_layout.addWidget(log_title)
 
         self.grid_widget = QListWidget()
         self.grid_widget.setViewMode(QListWidget.IconMode)
         self.grid_widget.setResizeMode(QListWidget.Adjust)
         self.grid_widget.setSpacing(15)
-        self.grid_widget.setIconSize(QSize(120, 160))
+        self.grid_widget.setIconSize(QSize(100, 140)) # Slightly balanced down visual asset scale
         self.grid_widget.setMovement(QListWidget.Static)
-        right_layout.addWidget(self.grid_widget)
+        bottom_layout.addWidget(self.grid_widget)
 
-        # Footer Buttons
+        # Data Action Layout Bar
         btn_layout = QHBoxLayout()
         self.export_btn = QPushButton("📁 Export Data Sheet")
         self.export_btn.setObjectName("exportBtn")
@@ -83,11 +91,12 @@ class MainWindow(QMainWindow):
         self.clear_btn.setObjectName("clearBtn")
         self.clear_btn.clicked.connect(self.clear_library)
         btn_layout.addWidget(self.clear_btn)
-        right_layout.addLayout(btn_layout)
+        bottom_layout.addLayout(btn_layout)
 
-        splitter.addWidget(left_frame)
-        splitter.addWidget(right_frame)
-        splitter.setSizes([500, 650])
+        # Pack blocks directly to splitter object stack
+        splitter.addWidget(top_frame)
+        splitter.addWidget(bottom_frame)
+        splitter.setSizes([350, 450]) # Proportional initial top/bottom weight distributions
         main_layout.addWidget(splitter)
 
     def setup_camera(self):
@@ -134,7 +143,7 @@ class MainWindow(QMainWindow):
         if cover_bytes:
             pixmap.loadFromData(cover_bytes)
         else:
-            img = QImage(120, 160, QImage.Format_RGB888)
+            img = QImage(100, 140, QImage.Format_RGB888)
             img.fill(Qt.darkGray)
             pixmap = QPixmap.fromImage(img)
 
