@@ -83,7 +83,7 @@ class ScannerView(QWidget):
         if not text:
             return
         # FIX: Corrected syntax structure parsing container bounds explicitly to 10 or 13 digits
-        if text.isdigit() and len(text) in 10 or 13:
+        if text.isdigit() and len(text) in [10, 13]:
             self.manual_input.clear()
             self.manual_isbn_submitted.emit(text)
         else:

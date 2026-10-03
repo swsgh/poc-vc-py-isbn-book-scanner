@@ -69,6 +69,7 @@ class MainWindow(QMainWindow):
         self.scanner_view.manual_isbn_submitted.connect(self.handle_barcode)
         self.bookshelf_view.clear_library_requested.connect(self.wipe_all_data)
         self.bookshelf_view.book_selected.connect(self.book_details_view.show_book_details)
+        self.book_details_view.delete_requested.connect(self.remove_single_book)
 
         vertical_splitter.setSizes([380, 520])
         main_layout.addWidget(vertical_splitter)
@@ -133,3 +134,12 @@ class MainWindow(QMainWindow):
             w.quit()
             w.wait()
         event.accept()
+
+    def remove_single_book(self, isbn):
+        """Drops targeted entry records across internal memory caches, SQLite storage blocks, and layouts."""
+        if isbn in self.scanned_isbns:
+            self.scanned_isbns.remove(isbn)
+
+        db.delete_book_by_isbn(isbn)
+        self.bookshelf_view.remove_item_by_isbn(isbn)
+        self.scanner_view.set_status("🗑️ Book removed from collection.", "color: #f38ba8;")

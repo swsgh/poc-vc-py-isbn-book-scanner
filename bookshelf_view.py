@@ -110,3 +110,12 @@ class BookshelfView(QWidget):
         if confirm == QMessageBox.Yes:
             self.grid_widget.clear()
             self.clear_library_requested.emit()
+
+    def remove_item_by_isbn(self, isbn):
+        """Finds and drops the matching list widget card row out of the UI tree view context."""
+        for i in range(self.grid_widget.count()):
+            item = self.grid_widget.item(i)
+            if item.data(Qt.UserRole) == isbn:
+                # Take item out of list management hierarchy
+                self.grid_widget.takeItem(i)
+                break

@@ -48,3 +48,15 @@ def clear_all_books():
     cursor.execute("DELETE FROM books")
     conn.commit()
     conn.close()
+
+def delete_book_by_isbn(isbn):
+    """Deletes a single book entry from the database by its ISBN."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM books WHERE isbn = ?", (isbn,))
+        conn.commit()
+    except Exception as e:
+        print(f"Database deletion error: {e}")
+    finally:
+        conn.close()
