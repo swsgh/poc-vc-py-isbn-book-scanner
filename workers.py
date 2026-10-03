@@ -106,7 +106,7 @@ class FetchBookWorker(QThread):
 
     def fetch_from_google_books(self):
         try:
-            url = "https://googleapis.com/books/v1/volumes"
+            url = "https://www.googleapis.com/books/v1/volumes"
             params = {"q": f"isbn:{self.isbn}"}
             res = requests.get(url, params=params, timeout=4)
             if res.status_code == 200:
