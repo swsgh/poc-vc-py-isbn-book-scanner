@@ -108,6 +108,9 @@ class MainWindow(QMainWindow):
         window_bg = system_palette.color(system_palette.ColorGroup.Active, system_palette.ColorRole.Window).name()
         base_bg = system_palette.color(system_palette.ColorGroup.Active, system_palette.ColorRole.Base).name()
         text_color = system_palette.color(system_palette.ColorGroup.Active, system_palette.ColorRole.WindowText).name()
+        disabled_text_color = system_palette.color(
+            system_palette.ColorGroup.Disabled, system_palette.ColorRole.WindowText
+        ).name()
         border_color = system_palette.color(system_palette.ColorGroup.Active, system_palette.ColorRole.Mid).name()
         highlight_color = system_palette.color(system_palette.ColorGroup.Active, system_palette.ColorRole.Highlight).name()
         highlighted_text_color = system_palette.color(
@@ -130,6 +133,8 @@ class MainWindow(QMainWindow):
             QMenu {{ background-color: {base_bg}; border: 1px solid {border_color}; border-radius: 6px; padding: 5px; }}
             QMenu::item {{ padding: 6px 25px 6px 20px; color: {text_color}; }}
             QMenu::item:selected {{ background-color: {highlight_color}; color: {highlighted_text_color}; border-radius: 4px; }}
+            QMenu::item:disabled {{ color: {disabled_text_color}; }}
+            QMenu::item:disabled:selected {{ background-color: {base_bg}; color: {disabled_text_color}; }}
             QLineEdit {{ background-color: {base_bg}; border: 1px solid {border_color}; border-radius: 6px; padding: 10px; color: {text_color}; font-size: 14px; }}
             QLineEdit:focus {{ border: 1px solid {highlight_color}; }}
             QListWidget {{ background-color: {base_bg}; border: 1px solid {border_color}; border-radius: 8px; }}
@@ -143,6 +148,7 @@ class MainWindow(QMainWindow):
         self.settings_menu = QMenu(self)
 
         self.register_action = QAction("Register Sync Account...", self)
+        self.register_action.setEnabled(True)
         self.register_action.triggered.connect(lambda: self.prompt_sync_auth("register"))
         self.login_action = QAction("Log In to Sync...", self)
         self.login_action.triggered.connect(lambda: self.prompt_sync_auth("login"))
@@ -291,6 +297,8 @@ class MainWindow(QMainWindow):
     def on_sync_authenticated(self, token: str, username: str):
         self.sync_token = token
         self.sync_username = username
+        self.register_action.setEnabled(False)
+        self.login_action.setEnabled(False)
         self.sync_action.setEnabled(True)
         self.logout_action.setEnabled(True)
         self.statusBar().showMessage(f"Signed in to sync as {username}.", 5000)
@@ -338,6 +346,8 @@ class MainWindow(QMainWindow):
             return
         self.sync_token = ""
         self.sync_username = ""
+        self.register_action.setEnabled(True)
+        self.login_action.setEnabled(True)
         self.sync_action.setEnabled(False)
         self.logout_action.setEnabled(False)
         self.statusBar().showMessage("Signed out of sync.", 5000)
