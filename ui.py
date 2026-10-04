@@ -26,6 +26,7 @@ class MainWindow(QMainWindow):
         self.sync_token = ""
         self.sync_username = ""
 
+        db.configure_shared_database()
         db.init_db()
         self.setup_ui()
         self.load_books_from_db()
@@ -266,7 +267,7 @@ class MainWindow(QMainWindow):
     def load_books_from_db(self):
         rows = db.get_all_books()
         for row in rows:
-            isbn, title, author, cover_blob = row
+            isbn, title, author, _engine_source, cover_blob = row
             self.scanned_isbns.add(isbn)
             self.bookshelf_view.render_book_item(title, author, cover_blob, isbn)
 

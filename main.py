@@ -41,6 +41,7 @@ if __name__ == "__main__":
         sys.argv += ["-platform", "windows:darkmode=2"]
 
     app = QApplication(sys.argv)
+    app.setApplicationName("ISBNBookScanner")
     apply_forced_dark_theme(app)
 
     window = MainWindow()

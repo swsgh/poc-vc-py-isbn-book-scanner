@@ -116,7 +116,11 @@ class SyncWorker(QThread):
             cover_bytes = base64.b64decode(cover_data, validate=True) if cover_data else b""
             title = update.get("title", "")
             author = update.get("authors", "")
-            if not db.save_book(isbn, title, author, cover_bytes, queue_sync=False):
+            engine_source = update.get("engineSource", "")
+            if not db.save_book(
+                isbn, title, author, cover_bytes,
+                queue_sync=False, engine_source=engine_source,
+            ):
                 raise RuntimeError(f"Could not save the synchronized book {isbn} locally.")
             downloaded.append((isbn, title, author, cover_bytes))
 
@@ -160,12 +164,12 @@ class SyncWorker(QThread):
 
     def _upload_book(self, session, token, book):
         self._check_interruption()
-        isbn, title, author, cover_bytes = book
+        isbn, title, author, engine_source, cover_bytes = book
         metadata = json.dumps({
             "isbn": isbn,
             "title": title,
             "authors": author,
-            "engineSource": "Python ISBN Scanner",
+            "engineSource": engine_source or "Python ISBN Scanner",
         })
         files = {"metadata": (None, metadata)}
         if cover_bytes:

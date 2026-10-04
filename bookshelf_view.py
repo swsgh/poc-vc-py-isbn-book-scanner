@@ -107,7 +107,7 @@ class BookshelfView(QWidget):
 
         df = pd.DataFrame([
             {"ISBN": isbn, "Title": title, "Author": author}
-            for isbn, title, author, _ in rows
+            for isbn, title, author, _, _ in rows
         ])
         file_path, selected_filter = QFileDialog.getSaveFileName(
             self, "Export Book List", os.path.expanduser("~/Desktop"),

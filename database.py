@@ -1,11 +1,37 @@
 import sqlite3
 from contextlib import contextmanager
+from pathlib import Path
 
-DB_NAME = "books.db"
+from PySide6.QtCore import QCoreApplication, QStandardPaths
+
+DB_NAME = ""
+
+
+def configure_shared_database():
+    global DB_NAME
+
+    QCoreApplication.setApplicationName("ISBNBookScanner")
+    app_data = Path(QStandardPaths.writableLocation(QStandardPaths.AppDataLocation))
+    app_data.mkdir(parents=True, exist_ok=True)
+
+    shared_path = app_data / "scanned_books.db"
+    DB_NAME = str(shared_path)
+
+BOOKS_SCHEMA = """
+    CREATE TABLE {table_name} (
+        isbn TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        authors TEXT,
+        engine_source TEXT,
+        cover_blob BLOB
+    )
+"""
 
 
 @contextmanager
 def _connect():
+    if not DB_NAME:
+        configure_shared_database()
     connection = sqlite3.connect(DB_NAME)
     try:
         yield connection
@@ -18,16 +44,9 @@ def _connect():
 
 
 def init_db():
-    """Initializes the local SQLite database to store book metadata and cover images."""
+    """Create the common SQLite schema used by the Python and Qt clients."""
     with _connect() as connection:
-        connection.execute("""
-            CREATE TABLE IF NOT EXISTS books (
-                isbn TEXT PRIMARY KEY,
-                title TEXT,
-                author TEXT,
-                cover_blob BLOB
-            )
-        """)
+        connection.execute(BOOKS_SCHEMA.format(table_name="IF NOT EXISTS books"))
         connection.execute("""
             CREATE TABLE IF NOT EXISTS sync_queue (
                 isbn TEXT PRIMARY KEY,
@@ -49,13 +68,21 @@ def _queue_sync_action(connection, isbn: str, action_type: str):
     )
 
 
-def save_book(isbn: str, title: str, author: str, cover_bytes: bytes, queue_sync=True):
+def save_book(
+    isbn: str,
+    title: str,
+    author: str,
+    cover_bytes: bytes,
+    queue_sync=True,
+    engine_source="Python ISBN Scanner",
+):
     """Inserts or overwrites a book record in the local database storage."""
     try:
         with _connect() as connection:
             connection.execute(
-                "INSERT OR REPLACE INTO books (isbn, title, author, cover_blob) VALUES (?, ?, ?, ?)",
-                (isbn, title, author, sqlite3.Binary(cover_bytes)),
+                "INSERT OR REPLACE INTO books "
+                "(isbn, title, authors, engine_source, cover_blob) VALUES (?, ?, ?, ?, ?)",
+                (isbn, title, author, engine_source, sqlite3.Binary(cover_bytes)),
             )
             if queue_sync:
                 _queue_sync_action(connection, isbn, "UPLOAD")
@@ -69,14 +96,14 @@ def get_all_books():
     """Retrieves all stored books from the shelf database collection rows."""
     with _connect() as connection:
         return connection.execute(
-            "SELECT isbn, title, author, cover_blob FROM books"
+            "SELECT isbn, title, authors, engine_source, cover_blob FROM books"
         ).fetchall()
 
 
 def get_book_by_isbn(isbn: str):
     with _connect() as connection:
         return connection.execute(
-            "SELECT isbn, title, author, cover_blob FROM books WHERE isbn = ?",
+            "SELECT isbn, title, authors, engine_source, cover_blob FROM books WHERE isbn = ?",
             (isbn,),
         ).fetchone()
 

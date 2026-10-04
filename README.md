@@ -47,7 +47,7 @@ Run the application from this directory:
 python main.py
 ```
 
-The SQLite database is named `books.db` and is created in the process's current working directory. Metadata lookups require an internet connection. Without a working camera, use the manual ISBN field.
+The SQLite database is `scanned_books.db` in Qt's per-user application data directory. Both apps use this same file and schema: `books(isbn, title, authors, engine_source, cover_blob)`, `sync_queue(isbn, action_type)` with one pending action per ISBN, and `sync_state(username, checkpoint)`. Metadata lookups require an internet connection. Without a working camera, use the manual ISBN field.
 
 ## Synchronization
 
@@ -55,4 +55,4 @@ Start the companion `poc-vc-py-bookshelf-sync-server` using its README instructi
 
 Open the settings menu to register an account or log in, then choose **Sync Now**. Registration creates the account and signs in. On the first sync for an account, server books are downloaded and local books unknown to that account are uploaded. Later syncs exchange changes and deletions. Local additions, removals, and clear-library actions are queued; authenticated local changes sync automatically, while queued work can be retried with **Sync Now** after reconnecting. Use **Log Out of Sync** to clear the in-memory session.
 
-The app keeps the authentication token in memory and stores per-account sync checkpoints and pending local actions in `books.db`. The companion server currently has a development JWT secret and should only be used in a trusted environment until configured securely.
+The app keeps the authentication token in memory and stores per-account sync checkpoints and pending local actions in `scanned_books.db`. The companion server currently has a development JWT secret and should only be used in a trusted environment until configured securely.
