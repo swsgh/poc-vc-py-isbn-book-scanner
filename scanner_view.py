@@ -35,7 +35,7 @@ class ScannerView(QWidget):
         manual_layout.addWidget(self.manual_btn)
         layout.addLayout(manual_layout)
 
-        self.status_label = QLabel("Center an ISBN barcode to log a book")
+        self.status_label = QLabel("Center an ISBN barcode to add a book")
         self.status_label.setAlignment(Qt.AlignCenter)
         self.apply_palette_styles()
         layout.addWidget(self.status_label, stretch=0)

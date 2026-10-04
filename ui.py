@@ -63,7 +63,7 @@ class MainWindow(QMainWindow):
 
         # Upper control layout bar setup
         top_bar_layout = QHBoxLayout()
-        self.toggle_cam_btn = QPushButton("📷 Open Scanner Suite")
+        self.toggle_cam_btn = QPushButton("📷 Show Camera Preview")
         self.toggle_cam_btn.setObjectName("toggleCamBtn")
         self.toggle_cam_btn.clicked.connect(self.toggle_scanner_view)
         top_bar_layout.addWidget(self.toggle_cam_btn)
@@ -281,11 +281,11 @@ class MainWindow(QMainWindow):
     def toggle_scanner_view(self):
         if self.scanner_view.isVisible():
             self.scanner_view.hide()
-            self.toggle_cam_btn.setText("📷 Open Scanner Suite")
+            self.toggle_cam_btn.setText("📷 Show Camera Preview")
             self.stop_camera()
         else:
             self.scanner_view.show()
-            self.toggle_cam_btn.setText("🙈 Hide Scanner Suite")
+            self.toggle_cam_btn.setText("🙈 Hide Camera Preview")
             self.setup_camera()
 
     def setup_camera(self):
@@ -585,7 +585,7 @@ class MainWindow(QMainWindow):
             self.status_reset_timer = QTimer()
             self.status_reset_timer.setSingleShot(True)
             self.status_reset_timer.timeout.connect(
-                lambda: self.scanner_view.set_status("Center an ISBN barcode to log a book")
+                lambda: self.scanner_view.set_status("Center an ISBN barcode to add a book")
             )
             self.status_reset_timer.start(2000)
 
@@ -617,7 +617,7 @@ class MainWindow(QMainWindow):
         self.status_reset_timer = QTimer()
         self.status_reset_timer.setSingleShot(True)
         self.status_reset_timer.timeout.connect(
-            lambda: self.scanner_view.set_status("Center an ISBN barcode to log a book")
+            lambda: self.scanner_view.set_status("Center an ISBN barcode to add a book")
         )
         self.status_reset_timer.start(2500)
 

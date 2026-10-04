@@ -17,7 +17,7 @@ class BookshelfView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         # Header Title
-        log_title = QLabel("Saved Books Shelf Grid")
+        log_title = QLabel("Bookshelf")
         log_title.setFont(QFont("Segoe UI", 12, QFont.Bold))
         layout.addWidget(log_title)
 
