@@ -4,7 +4,7 @@ from urllib.parse import urlsplit
 from PySide6.QtCore import Qt, QTimer, Slot, QSettings
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QApplication, QPushButton, QMenu, QMessageBox,
-                             QInputDialog, QLineEdit)
+                             QInputDialog, QLineEdit, QLabel)
 from PySide6.QtGui import QAction
 
 import database as db
@@ -12,7 +12,7 @@ from workers import CameraWorker, FetchBookWorker
 from scanner_view import ScannerView
 from bookshelf_view import BookshelfView
 from book_details_view import BookDetailsView
-from sync_worker import SyncWorker
+from sync_worker import ServerHealthCheckWorker, SyncWorker
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -27,6 +27,8 @@ class MainWindow(QMainWindow):
         self.worker = None
         self._sync_worker = None
         self._sync_requested = False
+        self._health_worker = None
+        self._health_check_pending = False
         self.sync_token = ""
         self.sync_username = ""
         self.settings = QSettings("Bookshelf", "ISBNBookScanner")
@@ -41,6 +43,11 @@ class MainWindow(QMainWindow):
         QApplication.instance().paletteChanged.connect(self.apply_palette_styles)
         self.load_books_from_db()
         self.status_reset_timer = None
+        self._health_timer = QTimer(self)
+        self._health_timer.setInterval(30000)
+        self._health_timer.timeout.connect(self._check_server_connection)
+        self._check_server_connection()
+        self._health_timer.start()
 
     def setup_ui(self):
         main_widget = QWidget()
@@ -55,6 +62,15 @@ class MainWindow(QMainWindow):
         top_bar_layout.addWidget(self.toggle_cam_btn)
 
         top_bar_layout.addStretch() # Separate items perfectly down the axis line
+
+        self.sync_connection_indicator = QLabel()
+        self.sync_connection_indicator.setObjectName("syncConnectionIndicator")
+        self.sync_connection_indicator.setFixedSize(12, 12)
+        self.sync_connection_indicator.setToolTip("Checking sync server connection...")
+        self.sync_connection_indicator.setAccessibleName("Sync server connection status")
+        self.sync_connection_indicator.setStyleSheet(
+            "QLabel { background-color: #8a929c; border-radius: 6px; }")
+        top_bar_layout.addWidget(self.sync_connection_indicator, alignment=Qt.AlignVCenter)
 
         # NEW: Settings Button Context Setup (The Cogwheel Menu Button)
         self.settings_btn = QPushButton("⚙️")
@@ -126,10 +142,6 @@ class MainWindow(QMainWindow):
         """Assembles the dropdown context menu and drops it behind the cogwheel button."""
         self.settings_menu = QMenu(self)
 
-        # Construct the destructive clear action line entry
-        clear_action = QAction("🗑️ Clear Library Database", self)
-        clear_action.triggered.connect(self.wipe_all_data)
-
         self.register_action = QAction("Register Sync Account...", self)
         self.register_action.triggered.connect(lambda: self.prompt_sync_auth("register"))
         self.login_action = QAction("Log In to Sync...", self)
@@ -141,12 +153,11 @@ class MainWindow(QMainWindow):
         self.logout_action.setEnabled(False)
         self.logout_action.triggered.connect(self.logout_sync)
 
-        self.settings_menu.addAction(self.register_action)
         self.settings_menu.addAction(self.login_action)
         self.settings_menu.addAction(self.sync_action)
         self.settings_menu.addAction(self.logout_action)
         self.settings_menu.addSeparator()
-        self.settings_menu.addAction(clear_action)
+        self.settings_menu.addAction(self.register_action)
 
         # Bind context dropdown display directly to our custom cog action button anchor
         self.settings_btn.setMenu(self.settings_menu)
@@ -215,7 +226,46 @@ class MainWindow(QMainWindow):
 
         self.sync_server_url = server_url
         self.settings.setValue("sync/server_url", server_url)
+        self._check_server_connection()
         self.start_sync_worker(operation, username.strip(), password)
+
+    def _check_server_connection(self):
+        if self._health_worker is not None and self._health_worker.isRunning():
+            self._health_check_pending = True
+            return
+
+        worker = ServerHealthCheckWorker(self.sync_server_url)
+        worker.connection_checked.connect(
+            lambda connected, checked_url=worker.server_url:
+                self._set_server_connection_status(connected, checked_url)
+        )
+        worker.finished.connect(lambda worker=worker: self._finish_health_check(worker))
+        self._health_worker = worker
+        self._active_workers.append(worker)
+        worker.start()
+
+    def _set_server_connection_status(self, connected: bool, checked_url: str):
+        if checked_url != self.sync_server_url.rstrip("/"):
+            return
+
+        color = "#2f9e62" if connected else "#d64f4f"
+        description = "Sync server is reachable" if connected else "Sync server is unreachable"
+        self.sync_connection_indicator.setStyleSheet(
+            f"QLabel {{ background-color: {color}; border-radius: 6px; }}")
+        self.sync_connection_indicator.setToolTip(description)
+        self.sync_connection_indicator.setAccessibleDescription(description)
+
+    def _finish_health_check(self, worker):
+        if worker in self._active_workers:
+            self._active_workers.remove(worker)
+        if self._health_worker is worker:
+            self._health_worker = None
+        worker.deleteLater()
+
+        url_changed = worker.server_url != self.sync_server_url.rstrip("/")
+        if self._health_check_pending or url_changed:
+            self._health_check_pending = False
+            self._check_server_connection()
 
     def start_sync_worker(self, operation: str, username="", password="", token=""):
         if self._sync_worker is not None and self._sync_worker.isRunning():
@@ -352,22 +402,6 @@ class MainWindow(QMainWindow):
         if self.sync_token:
             self.start_sync_worker("sync")
         self.scanner_view.set_status("🗑️ Book removed from collection.")
-
-    def wipe_all_data(self):
-        """Wipes matching cache maps, executes pure file purges, and drops visual items."""
-        confirm = QMessageBox.question(
-            self, "Clear Entire Library?",
-            "Are you completely sure you want to purge all books from the database and UI grid view?",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        if confirm == QMessageBox.Yes:
-            self.scanned_isbns.clear()
-            db.clear_all_books()
-            self.bookshelf_view.clear_ui_grid()
-            self.book_details_view.hide()
-            if self.sync_token:
-                self.start_sync_worker("sync")
-            self.scanner_view.set_status("🧹 Library database completely wiped.")
 
     def _cleanup_worker(self, worker):
         if worker in self._active_workers:

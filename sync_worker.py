@@ -8,6 +8,22 @@ from PySide6.QtCore import QThread, Signal
 import database as db
 
 
+class ServerHealthCheckWorker(QThread):
+    connection_checked = Signal(bool)
+
+    def __init__(self, server_url):
+        super().__init__()
+        self.server_url = server_url.rstrip("/")
+
+    def run(self):
+        try:
+            response = requests.get(f"{self.server_url}/health", timeout=(3, 5))
+            connected = response.status_code == 200 and response.json().get("status") == "ok"
+        except (requests.RequestException, ValueError, AttributeError):
+            connected = False
+        self.connection_checked.emit(connected)
+
+
 class SyncWorker(QThread):
     auth_succeeded = Signal(str, str)
     auth_failed = Signal(str)
