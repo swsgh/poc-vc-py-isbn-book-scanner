@@ -47,7 +47,7 @@ Run the application from this directory:
 python main.py
 ```
 
-The SQLite database is `bookshelf.db` in Qt's per-user application data directory. Both apps use this same file and schema: `books(isbn, title, authors, engine_source, cover_blob)`, `sync_queue(isbn, action_type)` with one pending action per ISBN, and `sync_state(username, checkpoint)`. Metadata lookups require an internet connection. Without a working camera, use the manual ISBN field.
+The SQLite database is shared by both clients. On Windows its path is `%APPDATA%\Bookshelf\ISBNBookScanner\bookshelf.db`. On Linux it is `~/.local/share/Bookshelf/ISBNBookScanner/bookshelf.db`, or `$XDG_DATA_HOME/Bookshelf/ISBNBookScanner/bookshelf.db` when `XDG_DATA_HOME` is set. Both apps use the same schema: `books(isbn, title, authors, engine_source, cover_blob)`, `sync_queue(isbn, action_type)` with one pending action per ISBN, and `sync_state(username, checkpoint)`. Metadata lookups require an internet connection. Without a working camera, use the manual ISBN field.
 
 ## Synchronization
 
