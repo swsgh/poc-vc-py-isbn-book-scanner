@@ -217,11 +217,13 @@ class MainWindow(QMainWindow):
         remembered_username = self.settings.value("sync/username", "", type=str)
 
         server_url_input = QLineEdit(default_url, dialog)
-        username_input = QLineEdit(remembered_username, dialog)
+        username_input = QLineEdit("" if registering else remembered_username, dialog)
         password_input = QLineEdit(dialog)
         password_input.setEchoMode(QLineEdit.Password)
-        remember_username = QCheckBox("Remember username", dialog)
-        remember_username.setChecked(bool(remembered_username))
+        remember_username = None
+        if not registering:
+            remember_username = QCheckBox("Remember username", dialog)
+            remember_username.setChecked(bool(remembered_username))
 
         form = QFormLayout()
         form.addRow("Server URL:", server_url_input)
@@ -231,7 +233,8 @@ class MainWindow(QMainWindow):
             confirmation_input = QLineEdit(dialog)
             confirmation_input.setEchoMode(QLineEdit.Password)
             form.addRow("Confirm password:", confirmation_input)
-        form.addRow("", remember_username)
+        else:
+            form.addRow("", remember_username)
 
         layout = QVBoxLayout(dialog)
         layout.addLayout(form)
@@ -269,10 +272,11 @@ class MainWindow(QMainWindow):
 
         self.sync_server_url = server_url
         self.settings.setValue("sync/server_url", server_url)
-        if remember_username.isChecked():
-            self.settings.setValue("sync/username", username)
-        else:
-            self.settings.remove("sync/username")
+        if not registering:
+            if remember_username.isChecked():
+                self.settings.setValue("sync/username", username)
+            else:
+                self.settings.remove("sync/username")
         self._check_server_connection()
         self.start_sync_worker(operation, username, password)
 
