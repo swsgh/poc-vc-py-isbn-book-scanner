@@ -51,7 +51,7 @@ The SQLite database is `bookshelf.db` in Qt's per-user application data director
 
 ## Synchronization
 
-Start the companion `poc-vc-py-bookshelf-sync-server` using its README instructions. The app uses `http://127.0.0.1:8000` by default; set `BOOKSHELF_SYNC_URL` to use another server URL.
+Start the companion `poc-vc-py-bookshelf-sync-server` using its README instructions. Register and Log In prompt for the server URL as well as account credentials; the URL is saved in system settings and shared with the Qt app. `BOOKSHELF_SYNC_URL` overrides the saved URL/default (`http://127.0.0.1:8000`). Use an `http://` or `https://` URL. For HTTPS, use a certificate trusted by the operating system/Python CA bundle; certificate verification remains enabled. The Compose server itself uses HTTP, so HTTPS requires a TLS-terminating proxy or HTTPS-enabled hosting in front of it.
 
 Open the settings menu to register an account or log in, then choose **Sync Now**. Registration creates the account and signs in. On the first sync for an account, server books are downloaded and local books unknown to that account are uploaded. Later syncs exchange changes and deletions. Local additions, removals, and clear-library actions are queued; authenticated local changes sync automatically, while queued work can be retried with **Sync Now** after reconnecting. Use **Log Out of Sync** to clear the in-memory session.
 

@@ -1,6 +1,7 @@
 import os
+from urllib.parse import urlsplit
 
-from PySide6.QtCore import Qt, QTimer, Slot
+from PySide6.QtCore import Qt, QTimer, Slot, QSettings
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QApplication, QPushButton, QMenu, QMessageBox,
                              QInputDialog, QLineEdit)
@@ -28,6 +29,11 @@ class MainWindow(QMainWindow):
         self._sync_requested = False
         self.sync_token = ""
         self.sync_username = ""
+        self.settings = QSettings("Bookshelf", "ISBNBookScanner")
+        self.sync_server_url = (
+            os.environ.get("BOOKSHELF_SYNC_URL")
+            or self.settings.value("sync/server_url", "http://127.0.0.1:8000", type=str)
+        )
 
         db.configure_shared_database()
         db.init_db()
@@ -180,6 +186,23 @@ class MainWindow(QMainWindow):
             return
 
         title = "Register Sync Account" if operation == "register" else "Log In to Sync"
+        server_url, accepted = QInputDialog.getText(
+            self, title, "Server URL:", text=self.sync_server_url
+        )
+        if not accepted:
+            return
+
+        server_url = server_url.strip().rstrip("/")
+        try:
+            parsed_url = urlsplit(server_url)
+        except ValueError:
+            parsed_url = None
+        if not parsed_url or parsed_url.scheme.lower() not in ("http", "https") or not parsed_url.hostname:
+            QMessageBox.warning(
+                self, "Invalid Server URL", "Enter an absolute http:// or https:// server URL."
+            )
+            return
+
         username, accepted = QInputDialog.getText(self, title, "Username:")
         if not accepted or not username.strip():
             return
@@ -190,6 +213,8 @@ class MainWindow(QMainWindow):
         if not accepted or not password:
             return
 
+        self.sync_server_url = server_url
+        self.settings.setValue("sync/server_url", server_url)
         self.start_sync_worker(operation, username.strip(), password)
 
     def start_sync_worker(self, operation: str, username="", password="", token=""):
@@ -197,12 +222,9 @@ class MainWindow(QMainWindow):
             self._sync_requested = True
             return
 
-        server_url = os.environ.get(
-            "BOOKSHELF_SYNC_URL", "http://127.0.0.1:8000"
-        )
         worker = SyncWorker(
             operation,
-            server_url,
+            self.sync_server_url,
             username=username or self.sync_username,
             password=password,
             token=token or self.sync_token,

@@ -1,6 +1,6 @@
 import base64
 import json
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import requests
 from PySide6.QtCore import QThread, Signal
@@ -31,7 +31,9 @@ class SyncWorker(QThread):
 
     def run(self):
         session = requests.Session()
+        session.verify = True
         try:
+            self._validate_server_url()
             if self.operation in ("register", "login"):
                 token = self._authenticate(session)
                 self.auth_succeeded.emit(token, self.username)
@@ -50,6 +52,11 @@ class SyncWorker(QThread):
         finally:
             session.close()
             self.password = ""
+
+    def _validate_server_url(self):
+        parsed_url = urlsplit(self.server_url)
+        if parsed_url.scheme.lower() not in ("http", "https") or not parsed_url.hostname:
+            raise RuntimeError("Sync server URL must be an absolute http:// or https:// URL.")
 
     def _authenticate(self, session):
         self._check_interruption()
