@@ -1,6 +1,9 @@
+import os
+
 from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                             QSplitter, QApplication, QPushButton, QMenu, QMessageBox)
+                             QSplitter, QApplication, QPushButton, QMenu, QMessageBox,
+                             QInputDialog, QLineEdit)
 from PySide6.QtGui import QAction
 
 import database as db
@@ -8,6 +11,7 @@ from workers import CameraWorker, FetchBookWorker
 from scanner_view import ScannerView
 from bookshelf_view import BookshelfView
 from book_details_view import BookDetailsView
+from sync_worker import SyncWorker
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -17,6 +21,10 @@ class MainWindow(QMainWindow):
         self.scanned_isbns = set()
         self._active_workers = []
         self.worker = None
+        self._sync_worker = None
+        self._sync_requested = False
+        self.sync_token = ""
+        self.sync_username = ""
 
         db.init_db()
         self.setup_ui()
@@ -114,6 +122,23 @@ class MainWindow(QMainWindow):
         # Construct the destructive clear action line entry
         clear_action = QAction("🗑️ Clear Library Database", self)
         clear_action.triggered.connect(self.wipe_all_data)
+
+        self.register_action = QAction("Register Sync Account...", self)
+        self.register_action.triggered.connect(lambda: self.prompt_sync_auth("register"))
+        self.login_action = QAction("Log In to Sync...", self)
+        self.login_action.triggered.connect(lambda: self.prompt_sync_auth("login"))
+        self.sync_action = QAction("Sync Now", self)
+        self.sync_action.setEnabled(False)
+        self.sync_action.triggered.connect(self.sync_now)
+        self.logout_action = QAction("Log Out of Sync", self)
+        self.logout_action.setEnabled(False)
+        self.logout_action.triggered.connect(self.logout_sync)
+
+        self.settings_menu.addAction(self.register_action)
+        self.settings_menu.addAction(self.login_action)
+        self.settings_menu.addAction(self.sync_action)
+        self.settings_menu.addAction(self.logout_action)
+        self.settings_menu.addSeparator()
         self.settings_menu.addAction(clear_action)
 
         # Bind context dropdown display directly to our custom cog action button anchor
@@ -147,6 +172,102 @@ class MainWindow(QMainWindow):
     def handle_camera_unavailable(self, message: str):
         self.scanner_view.set_status(message, "color: #ffaa55; font-weight: bold;")
         self.scanner_view.manual_input.setFocus()
+
+    def prompt_sync_auth(self, operation: str):
+        if self._sync_worker is not None and self._sync_worker.isRunning():
+            self.statusBar().showMessage("A sync operation is already running.", 5000)
+            return
+
+        title = "Register Sync Account" if operation == "register" else "Log In to Sync"
+        username, accepted = QInputDialog.getText(self, title, "Username:")
+        if not accepted or not username.strip():
+            return
+
+        password, accepted = QInputDialog.getText(
+            self, title, "Password:", QLineEdit.Password
+        )
+        if not accepted or not password:
+            return
+
+        self.start_sync_worker(operation, username.strip(), password)
+
+    def start_sync_worker(self, operation: str, username="", password="", token=""):
+        if self._sync_worker is not None and self._sync_worker.isRunning():
+            self._sync_requested = True
+            return
+
+        server_url = os.environ.get(
+            "BOOKSHELF_SYNC_URL", "http://127.0.0.1:8000"
+        )
+        worker = SyncWorker(
+            operation,
+            server_url,
+            username=username or self.sync_username,
+            password=password,
+            token=token or self.sync_token,
+        )
+        worker.auth_succeeded.connect(self.on_sync_authenticated)
+        worker.auth_failed.connect(self.on_sync_failed)
+        worker.sync_succeeded.connect(self.on_sync_succeeded)
+        worker.sync_failed.connect(self.on_sync_failed)
+        worker.finished.connect(lambda: self.on_sync_worker_finished(worker))
+        self._sync_worker = worker
+        self.statusBar().showMessage("Synchronizing bookshelf...")
+        worker.start()
+
+    def on_sync_authenticated(self, token: str, username: str):
+        self.sync_token = token
+        self.sync_username = username
+        self.sync_action.setEnabled(True)
+        self.logout_action.setEnabled(True)
+        self.statusBar().showMessage(f"Signed in to sync as {username}.", 5000)
+
+    def on_sync_succeeded(self, downloaded, removed, uploaded: int, deleted: int):
+        for isbn, title, author, cover_bytes in downloaded:
+            self.scanned_isbns.add(isbn)
+            self.bookshelf_view.remove_item_by_isbn(isbn)
+            self.bookshelf_view.render_book_item(title, author, cover_bytes, isbn)
+
+        for isbn in removed:
+            self.scanned_isbns.discard(isbn)
+            self.bookshelf_view.remove_item_by_isbn(isbn)
+            if self.book_details_view.current_isbn == isbn:
+                self.book_details_view.current_isbn = None
+                self.book_details_view.hide()
+
+        self.statusBar().showMessage(
+            f"Sync complete: {len(downloaded)} downloaded, {len(removed)} removed, "
+            f"{uploaded} uploaded, {deleted} deletes sent.",
+            10000,
+        )
+
+    def on_sync_failed(self, message: str):
+        self._sync_requested = False
+        self.statusBar().showMessage(f"Sync failed: {message}", 15000)
+
+    def on_sync_worker_finished(self, worker):
+        if self._sync_worker is worker:
+            self._sync_worker = None
+        worker.deleteLater()
+        if self._sync_requested and self.sync_token:
+            self._sync_requested = False
+            self.start_sync_worker("sync")
+
+    def sync_now(self):
+        if not self.sync_token:
+            self.statusBar().showMessage("Log in before synchronizing.", 5000)
+            return
+        self.start_sync_worker("sync")
+
+    def logout_sync(self):
+        if self._sync_worker is not None and self._sync_worker.isRunning():
+            self.statusBar().showMessage("Wait for the current sync to finish before logging out.", 5000)
+            return
+        self.sync_token = ""
+        self.sync_username = ""
+        self.sync_action.setEnabled(False)
+        self.logout_action.setEnabled(False)
+        self.statusBar().showMessage("Signed out of sync.", 5000)
 
     def setup_laser_timer(self):
         self.laser_timer = QTimer(self)
@@ -193,6 +314,8 @@ class MainWindow(QMainWindow):
 
         db.save_book(isbn, title, author, cover_bytes)
         self.bookshelf_view.render_book_item(title, author, cover_bytes, isbn)
+        if self.sync_token:
+            self.start_sync_worker("sync")
         self.scanner_view.set_status(f"✅ Logged: {title}")
         self.book_details_view.show_book_details(isbn, title, author, cover_bytes)
 
@@ -208,6 +331,8 @@ class MainWindow(QMainWindow):
             self.scanned_isbns.remove(isbn)
         db.delete_book_by_isbn(isbn)
         self.bookshelf_view.remove_item_by_isbn(isbn)
+        if self.sync_token:
+            self.start_sync_worker("sync")
         self.scanner_view.set_status("🗑️ Book removed from collection.")
 
     def wipe_all_data(self):
@@ -222,6 +347,8 @@ class MainWindow(QMainWindow):
             db.clear_all_books()
             self.bookshelf_view.clear_ui_grid()
             self.book_details_view.hide()
+            if self.sync_token:
+                self.start_sync_worker("sync")
             self.scanner_view.set_status("🧹 Library database completely wiped.")
 
     def _cleanup_worker(self, worker):
@@ -230,6 +357,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.laser_timer.stop()
+        if self._sync_worker is not None and self._sync_worker.isRunning():
+            self._sync_worker.stop()
+            self._sync_worker.wait()
         self.stop_camera()
         for w in self._active_workers:
             w.quit()

@@ -1,1 +1,6 @@
 PySide6
+opencv-python
+pyzbar
+requests
+pandas
+openpyxl
