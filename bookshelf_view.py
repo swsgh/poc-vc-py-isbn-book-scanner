@@ -6,7 +6,7 @@ from PySide6.QtGui import QImage, QPixmap, QFont, QPainter, QColor, QPalette
 from cover_cache import cover_path, has_cached_cover
 
 class BookshelfView(QWidget):
-    book_selected = Signal(str, str, str, str)
+    book_selected = Signal(str, str, str, str, str, str, int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -42,7 +42,10 @@ class BookshelfView(QWidget):
         filter_layout.addWidget(self.filter_input)
         layout.addLayout(filter_layout)
 
-    def render_book_item(self, title: str, author: str, cover_url: str, isbn: str = ""):
+    def render_book_item(
+        self, title: str, author: str, cover_url: str, isbn: str = "",
+        publication_date: str = "", publisher: str = "", page_count: int = 0,
+    ):
         if cover_url and has_cached_cover(isbn):
             pixmap = QPixmap(str(cover_path(isbn)))
         else:
@@ -58,6 +61,9 @@ class BookshelfView(QWidget):
         item.setData(Qt.UserRole + 1, title)
         item.setData(Qt.UserRole + 2, author)
         item.setData(Qt.UserRole + 3, cover_url)
+        item.setData(Qt.UserRole + 4, publication_date)
+        item.setData(Qt.UserRole + 5, publisher)
+        item.setData(Qt.UserRole + 6, page_count)
 
         self.grid_widget.insertItem(0, item)
         self.filter_bookshelf_items(self.filter_input.text())
@@ -119,8 +125,13 @@ class BookshelfView(QWidget):
         title = item.data(Qt.UserRole + 1)
         author = item.data(Qt.UserRole + 2)
         cover_url = item.data(Qt.UserRole + 3)
+        publication_date = item.data(Qt.UserRole + 4) or ""
+        publisher = item.data(Qt.UserRole + 5) or ""
+        page_count = item.data(Qt.UserRole + 6) or 0
         if isbn:
-            self.book_selected.emit(isbn, title, author, cover_url)
+            self.book_selected.emit(
+                isbn, title, author, cover_url, publication_date, publisher, page_count
+            )
 
     def refresh_item_cover(self, isbn: str):
         for index in range(self.grid_widget.count()):

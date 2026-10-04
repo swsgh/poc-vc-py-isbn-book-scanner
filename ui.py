@@ -17,6 +17,11 @@ from bookshelf_view import BookshelfView
 from book_details_view import BookDetailsView
 from sync_worker import CoverDownloadWorker, ServerHealthCheckWorker, SyncWorker
 
+BOOK_CSV_HEADERS = (
+    "ISBN", "Title", "Author", "Engine Source", "Cover URL",
+    "First Publication Date", "Publisher", "Page Count",
+)
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -194,7 +199,7 @@ class MainWindow(QMainWindow):
         try:
             with open(file_path, "w", encoding="utf-8-sig", newline="") as csv_file:
                 writer = csv.writer(csv_file)
-                writer.writerow(["ISBN", "Title", "Author", "Engine Source", "Cover URL"])
+                writer.writerow(BOOK_CSV_HEADERS)
                 writer.writerows(rows)
         except OSError as error:
             QMessageBox.critical(self, "Export CSV Failed", str(error))
@@ -211,44 +216,57 @@ class MainWindow(QMainWindow):
         try:
             with open(file_path, "r", encoding="utf-8-sig", newline="") as csv_file:
                 reader = csv.DictReader(csv_file)
-                if not reader.fieldnames:
-                    raise ValueError("The CSV file has no header row.")
-                columns = {name.strip().casefold(): name for name in reader.fieldnames if name}
-                isbn_column = columns.get("isbn")
-                title_column = columns.get("title")
-                author_column = columns.get("author") or columns.get("authors")
-                if not isbn_column or not title_column:
-                    raise ValueError("CSV must include ISBN and Title columns.")
+                if reader.fieldnames != list(BOOK_CSV_HEADERS):
+                    raise ValueError(
+                        "CSV headers must be: " + ", ".join(BOOK_CSV_HEADERS)
+                    )
 
                 imported = 0
                 skipped = 0
                 for row in reader:
-                    isbn = (row.get(isbn_column) or "").strip()
-                    title = (row.get(title_column) or "").strip()
+                    isbn = (row.get("ISBN") or "").strip()
+                    title = (row.get("Title") or "").strip()
                     if not isbn or not title:
                         skipped += 1
                         continue
 
-                    author = (row.get(author_column) or "").strip() if author_column else ""
-                    engine_source = (row.get(columns.get("engine source", "")) or "").strip()
-                    cover_url = (row.get(columns.get("cover url", "")) or "").strip()
+                    author = (row.get("Author") or "").strip()
+                    engine_source = (row.get("Engine Source") or "").strip()
+                    cover_url = (row.get("Cover URL") or "").strip()
+                    publication_date = (row.get("First Publication Date") or "").strip()
+                    publisher = (row.get("Publisher") or "").strip()
+                    page_count_value = (row.get("Page Count") or "").strip()
+                    try:
+                        page_count = int(page_count_value) if page_count_value else 0
+                    except ValueError:
+                        skipped += 1
+                        continue
                     existing = db.get_book_by_isbn(isbn)
                     if existing and existing[4] != cover_url:
                         remove_cached_cover(isbn)
                     if not db.save_book(
                         isbn, title, author, cover_url,
-                        queue_sync=True, engine_source=engine_source or "CSV Import",
+                        queue_sync=True, engine_source=engine_source,
+                        publication_date=publication_date,
+                        publisher=publisher,
+                        page_count=page_count,
                     ):
                         skipped += 1
                         continue
 
                     self.scanned_isbns.add(isbn)
                     self.bookshelf_view.remove_item_by_isbn(isbn)
-                    self.bookshelf_view.render_book_item(title, author, cover_url, isbn)
+                    self.bookshelf_view.render_book_item(
+                        title, author, cover_url, isbn,
+                        publication_date, publisher, page_count,
+                    )
                     if cover_url and not has_cached_cover(isbn):
                         self._download_cover(isbn, cover_url)
                     if self.book_details_view.current_isbn == isbn:
-                        self.book_details_view.show_book_details(isbn, title, author, cover_url)
+                        self.book_details_view.show_book_details(
+                            isbn, title, author, cover_url,
+                            publication_date, publisher, page_count,
+                        )
                     imported += 1
         except (OSError, csv.Error, ValueError) as error:
             QMessageBox.critical(self, "Import CSV Failed", str(error))
@@ -447,12 +465,21 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Signed in to sync as {username}.", 5000)
 
     def on_sync_succeeded(self, downloaded, removed, uploaded: int, deleted: int):
-        for isbn, title, author, cover_url in downloaded:
+        for (isbn, title, author, cover_url, publication_date,
+             publisher, page_count) in downloaded:
             self.scanned_isbns.add(isbn)
             self.bookshelf_view.remove_item_by_isbn(isbn)
-            self.bookshelf_view.render_book_item(title, author, cover_url, isbn)
+            self.bookshelf_view.render_book_item(
+                title, author, cover_url, isbn,
+                publication_date, publisher, page_count,
+            )
             if cover_url and not has_cached_cover(isbn):
                 self._download_cover(isbn, cover_url)
+            if self.book_details_view.current_isbn == isbn:
+                self.book_details_view.show_book_details(
+                    isbn, title, author, cover_url,
+                    publication_date, publisher, page_count,
+                )
 
         for isbn in removed:
             self.scanned_isbns.discard(isbn)
@@ -508,9 +535,13 @@ class MainWindow(QMainWindow):
     def load_books_from_db(self):
         rows = db.get_all_books()
         for row in rows:
-            isbn, title, author, _engine_source, cover_url = row
+            (isbn, title, author, _engine_source, cover_url, publication_date,
+             publisher, page_count) = row
             self.scanned_isbns.add(isbn)
-            self.bookshelf_view.render_book_item(title, author, cover_url, isbn)
+            self.bookshelf_view.render_book_item(
+                title, author, cover_url, isbn,
+                publication_date or "", publisher or "", page_count or 0,
+            )
             if cover_url and not has_cached_cover(isbn):
                 self._download_cover(isbn, cover_url)
 
@@ -558,17 +589,30 @@ class MainWindow(QMainWindow):
             )
             self.status_reset_timer.start(2000)
 
-    @Slot(str, str, str, str)
-    def save_and_render_book(self, isbn: str, title: str, author: str, cover_url: str):
+    @Slot(str, str, str, str, str, str, int)
+    def save_and_render_book(
+        self, isbn: str, title: str, author: str, cover_url: str,
+        publication_date: str, publisher: str, page_count: int,
+    ):
         if self.status_reset_timer and self.status_reset_timer.isActive():
             self.status_reset_timer.stop()
 
-        db.save_book(isbn, title, author, cover_url)
-        self.bookshelf_view.render_book_item(title, author, cover_url, isbn)
+        db.save_book(
+            isbn, title, author, cover_url,
+            publication_date=publication_date,
+            publisher=publisher,
+            page_count=page_count,
+        )
+        self.bookshelf_view.render_book_item(
+            title, author, cover_url, isbn,
+            publication_date, publisher, page_count,
+        )
         if self.sync_token:
             self.start_sync_worker("sync")
         self.scanner_view.set_status(f"✅ Logged: {title}")
-        self.book_details_view.show_book_details(isbn, title, author, cover_url)
+        self.book_details_view.show_book_details(
+            isbn, title, author, cover_url, publication_date, publisher, page_count
+        )
 
         self.status_reset_timer = QTimer()
         self.status_reset_timer.setSingleShot(True)

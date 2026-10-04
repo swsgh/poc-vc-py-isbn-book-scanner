@@ -78,25 +78,34 @@ class CameraWorker(QThread):
 
 class FetchBookWorker(QThread):
     """Network metadata lookup remains universal across PC and Android."""
-    book_fetched = Signal(str, str, str, str)
+    book_fetched = Signal(str, str, str, str, str, str, int)
 
     def __init__(self, isbn: str):
         super().__init__()
         self.isbn = isbn
 
     def run(self):
-        success, title, author, cover_url = self.fetch_from_open_library()
+        success, title, author, cover_url, publication_date, publisher, page_count = (
+            self.fetch_from_open_library()
+        )
         if not success or title.startswith("Unknown Book"):
-            success, title, author, cover_url = self.fetch_from_google_books()
+            success, title, author, cover_url, publication_date, publisher, page_count = (
+                self.fetch_from_google_books()
+            )
 
         if not success:
             title = f"Unknown Book ({self.isbn})"
             author = "Unknown Author"
             cover_url = ""
+            publication_date = ""
+            publisher = ""
+            page_count = 0
 
         if cover_url:
             download_cover(self.isbn, cover_url)
-        self.book_fetched.emit(self.isbn, title, author, cover_url)
+        self.book_fetched.emit(
+            self.isbn, title, author, cover_url, publication_date, publisher, page_count
+        )
 
     def fetch_from_open_library(self):
         try:
@@ -112,10 +121,19 @@ class FetchBookWorker(QThread):
                     authors = ", ".join([a.get("name", "Unknown") for a in info.get("authors", [])]) or "Unknown Author"
 
                     cover_url = info.get("cover", {}).get("medium") or info.get("cover", {}).get("small")
-                    return True, title, authors, cover_url or ""
+                    publishers = info.get("publishers", [])
+                    first_publisher = publishers[0] if publishers else ""
+                    if isinstance(first_publisher, dict):
+                        first_publisher = first_publisher.get("name", "")
+                    try:
+                        page_count = int(info.get("number_of_pages") or 0)
+                    except (TypeError, ValueError):
+                        page_count = 0
+                    return (True, title, authors, cover_url or "",
+                            info.get("publish_date", "") or "", str(first_publisher), page_count)
         except Exception as e:
             print(f"[API Error] Open Library skipped: {e}")
-        return False, "", "", ""
+        return False, "", "", "", "", "", 0
 
     def fetch_from_google_books(self):
         try:
@@ -134,7 +152,13 @@ class FetchBookWorker(QThread):
                     if cover_url:
                         if cover_url.startswith("http://"):
                             cover_url = cover_url.replace("http://", "https://")
-                    return True, title, authors, cover_url or ""
+                    try:
+                        page_count = int(vol_info.get("pageCount") or 0)
+                    except (TypeError, ValueError):
+                        page_count = 0
+                    return (True, title, authors, cover_url or "",
+                            vol_info.get("publishedDate", "") or "",
+                            vol_info.get("publisher", "") or "", page_count)
         except Exception as e:
             print(f"[API Error] Google Books skipped: {e}")
-        return False, "", "", ""
+        return False, "", "", "", "", "", 0

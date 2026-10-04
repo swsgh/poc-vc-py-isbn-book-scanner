@@ -24,7 +24,10 @@ BOOKS_SCHEMA = """
         title TEXT NOT NULL,
         authors TEXT,
         engine_source TEXT,
-        cover_url TEXT
+        cover_url TEXT,
+        publication_date TEXT,
+        publisher TEXT,
+        page_count INTEGER
     )
 """
 
@@ -76,14 +79,19 @@ def save_book(
     cover_url: str,
     queue_sync=True,
     engine_source="Python ISBN Scanner",
+    publication_date="",
+    publisher="",
+    page_count=0,
 ):
     """Inserts or overwrites a book record in the local database storage."""
     try:
         with _connect() as connection:
             connection.execute(
                 "INSERT OR REPLACE INTO books "
-                "(isbn, title, authors, engine_source, cover_url) VALUES (?, ?, ?, ?, ?)",
-                (isbn, title, author, engine_source, cover_url),
+                "(isbn, title, authors, engine_source, cover_url, publication_date, publisher, page_count) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (isbn, title, author, engine_source, cover_url,
+                 publication_date, publisher, page_count),
             )
             if queue_sync:
                 _queue_sync_action(connection, isbn, "UPLOAD")
@@ -97,14 +105,16 @@ def get_all_books():
     """Retrieves all stored books from the shelf database collection rows."""
     with _connect() as connection:
         return connection.execute(
-            "SELECT isbn, title, authors, engine_source, cover_url FROM books"
+            "SELECT isbn, title, authors, engine_source, cover_url, publication_date, publisher, page_count "
+            "FROM books"
         ).fetchall()
 
 
 def get_book_by_isbn(isbn: str):
     with _connect() as connection:
         return connection.execute(
-            "SELECT isbn, title, authors, engine_source, cover_url FROM books WHERE isbn = ?",
+            "SELECT isbn, title, authors, engine_source, cover_url, publication_date, publisher, page_count "
+            "FROM books WHERE isbn = ?",
             (isbn,),
         ).fetchone()
 

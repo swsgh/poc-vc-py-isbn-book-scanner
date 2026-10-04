@@ -61,6 +61,16 @@ class BookDetailsView(QWidget):
         self.author_label.setStyleSheet("border: none; font-style: italic;")
         container_layout.addWidget(self.author_label)
 
+        self.metadata_label = QLabel("", self.container)
+        self.metadata_label.setWordWrap(True)
+        self.metadata_label.setAlignment(Qt.AlignCenter)
+        self.metadata_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+        )
+        self.metadata_label.setStyleSheet("border: none;")
+        self.metadata_label.hide()
+        container_layout.addWidget(self.metadata_label)
+
         self.isbn_label = QLabel("", self.container)
         self.isbn_label.setAlignment(Qt.AlignCenter)
         self.isbn_label.setTextInteractionFlags(
@@ -116,13 +126,25 @@ class BookDetailsView(QWidget):
         image.fill(palette.color(QPalette.AlternateBase))
         self.cover_label.setPixmap(QPixmap.fromImage(image))
 
-    def show_book_details(self, isbn: str, title: str, author: str, cover_url: str):
+    def show_book_details(
+        self, isbn: str, title: str, author: str, cover_url: str,
+        publication_date: str = "", publisher: str = "", page_count: int = 0,
+    ):
         self.current_isbn = isbn
         self.current_title = title
         self.current_cover_url = cover_url
         self.isbn_label.setText(f"ISBN: {isbn}")
         self.title_label.setText(title)
         self.author_label.setText(author)
+        metadata = []
+        if publication_date:
+            metadata.append(f"First published: {publication_date}")
+        if publisher:
+            metadata.append(f"Publisher: {publisher}")
+        if page_count:
+            metadata.append(f"Pages: {page_count}")
+        self.metadata_label.setText("\n".join(metadata))
+        self.metadata_label.setVisible(bool(metadata))
 
         if cover_url and has_cached_cover(isbn):
             pixmap = QPixmap(str(cover_path(isbn)))
