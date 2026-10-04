@@ -316,7 +316,9 @@ class MainWindow(QMainWindow):
         registering = operation == "register"
         dialog = QDialog(self)
         dialog.setWindowTitle(title)
-        dialog.setMinimumWidth(560)
+        maximum_width = max(1, self.width() * 4 // 5)
+        dialog.setMaximumWidth(maximum_width)
+        dialog.setMinimumWidth(min(375, maximum_width))
         dialog.setStyleSheet("QLabel { background-color: transparent; border: none; }")
 
         environment_url = os.environ.get("BOOKSHELF_SYNC_URL")
