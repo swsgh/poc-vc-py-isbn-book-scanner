@@ -14,7 +14,7 @@ def configure_shared_database():
     app_data = Path(QStandardPaths.writableLocation(QStandardPaths.AppDataLocation))
     app_data.mkdir(parents=True, exist_ok=True)
 
-    shared_path = app_data / "scanned_books.db"
+    shared_path = app_data / "bookshelf.db"
     DB_NAME = str(shared_path)
 
 BOOKS_SCHEMA = """
