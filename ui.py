@@ -49,8 +49,6 @@ class MainWindow(QMainWindow):
         self._health_timer = QTimer(self)
         self._health_timer.setInterval(30000)
         self._health_timer.timeout.connect(self._check_server_connection)
-        self._check_server_connection()
-        self._health_timer.start()
 
     def setup_ui(self):
         main_widget = QWidget()
@@ -69,7 +67,7 @@ class MainWindow(QMainWindow):
         self.sync_connection_indicator = QLabel()
         self.sync_connection_indicator.setObjectName("syncConnectionIndicator")
         self.sync_connection_indicator.setFixedSize(12, 12)
-        self.sync_connection_indicator.setToolTip("Checking sync server connection...")
+        self.sync_connection_indicator.setToolTip("Log in to check sync server")
         self.sync_connection_indicator.setAccessibleName("Sync server connection status")
         self.sync_connection_indicator.setStyleSheet(
             "QLabel { background-color: #8a929c; border-radius: 6px; }")
@@ -283,6 +281,8 @@ class MainWindow(QMainWindow):
         self.start_sync_worker(operation, username, password)
 
     def _check_server_connection(self):
+        if not self.sync_token:
+            return
         if self._health_worker is not None and self._health_worker.isRunning():
             self._health_check_pending = True
             return
@@ -298,7 +298,7 @@ class MainWindow(QMainWindow):
         worker.start()
 
     def _set_server_connection_status(self, connected: bool, checked_url: str):
-        if checked_url != self.sync_server_url.rstrip("/"):
+        if not self.sync_token or checked_url != self.sync_server_url.rstrip("/"):
             return
 
         color = "#2f9e62" if connected else "#d64f4f"
@@ -315,6 +315,9 @@ class MainWindow(QMainWindow):
             self._health_worker = None
         worker.deleteLater()
 
+        if not self.sync_token:
+            self._health_check_pending = False
+            return
         url_changed = worker.server_url != self.sync_server_url.rstrip("/")
         if self._health_check_pending or url_changed:
             self._health_check_pending = False
@@ -344,6 +347,8 @@ class MainWindow(QMainWindow):
     def on_sync_authenticated(self, token: str, username: str):
         self.sync_token = token
         self.sync_username = username
+        self._check_server_connection()
+        self._health_timer.start()
         self.register_action.setEnabled(False)
         self.login_action.setEnabled(False)
         self.sync_action.setEnabled(True)
@@ -396,6 +401,13 @@ class MainWindow(QMainWindow):
             return
         self.sync_token = ""
         self.sync_username = ""
+        self._health_timer.stop()
+        self._health_check_pending = False
+        self.sync_connection_indicator.setStyleSheet(
+            "QLabel { background-color: #8a929c; border-radius: 6px; }")
+        self.sync_connection_indicator.setToolTip("Log in to check sync server")
+        self.sync_connection_indicator.setAccessibleDescription(
+            "Log in to check sync server")
         self.register_action.setEnabled(True)
         self.login_action.setEnabled(True)
         self.sync_action.setEnabled(False)
