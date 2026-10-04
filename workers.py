@@ -32,38 +32,40 @@ class CameraWorker(QThread):
 
         # DESKTOP FALLBACK: Run standard fast OpenCV track loop on PC
         self.cap = cv2.VideoCapture(0)
-        if not self.cap.isOpened():
-            self.camera_unavailable.emit("No camera detected. Use the manual ISBN field instead.")
-            print("[Camera] No webcam found on device 0. Falling back to manual ISBN entry.")
-            return
+        try:
+            if not self.cap.isOpened():
+                self.camera_unavailable.emit("No camera detected. Use the manual ISBN field instead.")
+                print("[Camera] No webcam found on device 0. Falling back to manual ISBN entry.")
+                return
 
-        while self.running:
-            ret, frame = self.cap.read()
-            if not ret or frame is None:
-                self.camera_unavailable.emit("Camera stream unavailable. Use the manual ISBN field instead.")
-                break
+            while self.running:
+                ret, frame = self.cap.read()
+                if not ret or frame is None:
+                    self.camera_unavailable.emit("Camera stream unavailable. Use the manual ISBN field instead.")
+                    break
 
-            frame = cv2.flip(frame, 1)
-            barcodes = decode(frame, symbols=[ZBarSymbol.EAN13, ZBarSymbol.UPCA])
-            for barcode in barcodes:
-                barcode_data = barcode.data.decode("utf-8")
-                if len(barcode_data) in (10, 13) and barcode_data.isdigit():
-                    current_time = time.time()
-                    if barcode_data != self.last_scanned_barcode or (current_time - self.last_scan_time > 2.5):
-                        self.last_scanned_barcode = barcode_data
-                        self.last_scan_time = current_time
-                        self.barcode_detected.emit(barcode_data)
+                frame = cv2.flip(frame, 1)
+                barcodes = decode(frame, symbols=[ZBarSymbol.EAN13, ZBarSymbol.UPCA])
+                for barcode in barcodes:
+                    barcode_data = barcode.data.decode("utf-8")
+                    if len(barcode_data) in (10, 13) and barcode_data.isdigit():
+                        current_time = time.time()
+                        if barcode_data != self.last_scanned_barcode or (current_time - self.last_scan_time > 2.5):
+                            self.last_scanned_barcode = barcode_data
+                            self.last_scan_time = current_time
+                            self.barcode_detected.emit(barcode_data)
 
-            rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            h, w, ch = rgb_image.shape
-            bytes_per_line = ch * w
-            q_img = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
-            self.frame_received.emit(q_img)
+                rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                height, width, channels = rgb_image.shape
+                bytes_per_line = channels * width
+                q_img = QImage(rgb_image.data, width, height, bytes_per_line, QImage.Format_RGB888)
+                self.frame_received.emit(q_img)
+        finally:
+            self.cap.release()
+            self.cap = None
 
     def stop(self):
         self.running = False
-        if self.cap and self.cap.isOpened():
-            self.cap.release()
         self.wait()
 
 

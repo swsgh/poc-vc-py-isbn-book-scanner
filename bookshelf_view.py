@@ -105,7 +105,10 @@ class BookshelfView(QWidget):
             QMessageBox.warning(self, "Export Failed", "There are no books in your database to export yet!")
             return
 
-        df = pd.DataFrame([{"ISBN": r, "Title": r, "Author": r} for r in rows])
+        df = pd.DataFrame([
+            {"ISBN": isbn, "Title": title, "Author": author}
+            for isbn, title, author, _ in rows
+        ])
         file_path, selected_filter = QFileDialog.getSaveFileName(
             self, "Export Book List", os.path.expanduser("~/Desktop"),
             "Excel Spreadsheet (*.xlsx);;CSV Document (*.csv)"
