@@ -15,6 +15,7 @@ if not ON_ANDROID:
 class CameraWorker(QThread):
     frame_received = Signal(QImage)
     barcode_detected = Signal(str)
+    camera_unavailable = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -31,10 +32,16 @@ class CameraWorker(QThread):
 
         # DESKTOP FALLBACK: Run standard fast OpenCV track loop on PC
         self.cap = cv2.VideoCapture(0)
+        if not self.cap.isOpened():
+            self.camera_unavailable.emit("No camera detected. Use the manual ISBN field instead.")
+            print("[Camera] No webcam found on device 0. Falling back to manual ISBN entry.")
+            return
+
         while self.running:
             ret, frame = self.cap.read()
             if not ret or frame is None:
-                continue
+                self.camera_unavailable.emit("Camera stream unavailable. Use the manual ISBN field instead.")
+                break
 
             frame = cv2.flip(frame, 1)
             barcodes = decode(frame, symbols=[ZBarSymbol.EAN13, ZBarSymbol.UPCA])

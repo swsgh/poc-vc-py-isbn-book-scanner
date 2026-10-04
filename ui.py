@@ -131,7 +131,12 @@ class MainWindow(QMainWindow):
         self.worker = CameraWorker()
         self.worker.frame_received.connect(self.scanner_view.update_frame)
         self.worker.barcode_detected.connect(self.handle_barcode)
+        self.worker.camera_unavailable.connect(self.handle_camera_unavailable)
         self.worker.start()
+
+    def handle_camera_unavailable(self, message: str):
+        self.scanner_view.set_status(message, "color: #ffaa55; font-weight: bold;")
+        self.scanner_view.manual_input.setFocus()
 
     def setup_laser_timer(self):
         self.laser_timer = QTimer(self)
