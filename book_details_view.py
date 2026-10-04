@@ -46,17 +46,26 @@ class BookDetailsView(QWidget):
         self.title_label.setFont(QFont("Segoe UI", 11, QFont.Bold))
         self.title_label.setWordWrap(True)
         self.title_label.setAlignment(Qt.AlignCenter)
+        self.title_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+        )
         self.title_label.setStyleSheet("border: none; padding-top: 10px;")
         container_layout.addWidget(self.title_label)
 
         self.author_label = QLabel("", self.container)
         self.author_label.setWordWrap(True)
         self.author_label.setAlignment(Qt.AlignCenter)
+        self.author_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+        )
         self.author_label.setStyleSheet("border: none; font-style: italic;")
         container_layout.addWidget(self.author_label)
 
         self.isbn_label = QLabel("", self.container)
         self.isbn_label.setAlignment(Qt.AlignCenter)
+        self.isbn_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+        )
         self.isbn_label.setStyleSheet(
             "border: none; font-family: monospace; font-size: 12px; padding-top: 5px;"
         )
@@ -113,7 +122,7 @@ class BookDetailsView(QWidget):
         self.current_cover_url = cover_url
         self.isbn_label.setText(f"ISBN: {isbn}")
         self.title_label.setText(title)
-        self.author_label.setText(f"by {author}")
+        self.author_label.setText(author)
 
         if cover_url and has_cached_cover(isbn):
             pixmap = QPixmap(str(cover_path(isbn)))
