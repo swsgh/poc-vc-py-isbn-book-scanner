@@ -4,7 +4,8 @@ from urllib.parse import urlsplit
 from PySide6.QtCore import Qt, QTimer, Slot, QSettings
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QApplication, QPushButton, QMenu, QMessageBox,
-                             QInputDialog, QLineEdit, QLabel)
+                             QLineEdit, QLabel, QDialog, QFormLayout,
+                             QDialogButtonBox, QCheckBox)
 from PySide6.QtGui import QAction
 
 import database as db
@@ -203,37 +204,77 @@ class MainWindow(QMainWindow):
             return
 
         title = "Register Sync Account" if operation == "register" else "Log In to Sync"
-        server_url, accepted = QInputDialog.getText(
-            self, title, "Server URL:", text=self.sync_server_url
+        registering = operation == "register"
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setMinimumWidth(560)
+        dialog.setStyleSheet("QLabel { background-color: transparent; border: none; }")
+
+        environment_url = os.environ.get("BOOKSHELF_SYNC_URL")
+        default_url = environment_url or self.settings.value(
+            "sync/server_url", self.sync_server_url, type=str
         )
-        if not accepted:
+        remembered_username = self.settings.value("sync/username", "", type=str)
+
+        server_url_input = QLineEdit(default_url, dialog)
+        username_input = QLineEdit(remembered_username, dialog)
+        password_input = QLineEdit(dialog)
+        password_input.setEchoMode(QLineEdit.Password)
+        remember_username = QCheckBox("Remember username", dialog)
+        remember_username.setChecked(bool(remembered_username))
+
+        form = QFormLayout()
+        form.addRow("Server URL:", server_url_input)
+        form.addRow("Username:", username_input)
+        form.addRow("Password:", password_input)
+        if registering:
+            confirmation_input = QLineEdit(dialog)
+            confirmation_input.setEchoMode(QLineEdit.Password)
+            form.addRow("Confirm password:", confirmation_input)
+        form.addRow("", remember_username)
+
+        layout = QVBoxLayout(dialog)
+        layout.addLayout(form)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
+        layout.addWidget(buttons)
+
+        def accept_dialog():
+            server_url = server_url_input.text().strip().rstrip("/")
+            try:
+                parsed_url = urlsplit(server_url)
+            except ValueError:
+                parsed_url = None
+            if (not parsed_url or parsed_url.scheme.lower() not in ("http", "https")
+                    or not parsed_url.hostname):
+                QMessageBox.warning(
+                    dialog, "Invalid Server URL",
+                    "Enter an absolute http:// or https:// server URL.")
+                return
+            if not username_input.text().strip() or not password_input.text():
+                QMessageBox.warning(dialog, title, "Enter a username and password.")
+                return
+            if registering and password_input.text() != confirmation_input.text():
+                QMessageBox.warning(dialog, title, "The passwords do not match.")
+                return
+            dialog.accept()
+
+        buttons.accepted.connect(accept_dialog)
+        buttons.rejected.connect(dialog.reject)
+        if dialog.exec() != QDialog.Accepted:
             return
 
-        server_url = server_url.strip().rstrip("/")
-        try:
-            parsed_url = urlsplit(server_url)
-        except ValueError:
-            parsed_url = None
-        if not parsed_url or parsed_url.scheme.lower() not in ("http", "https") or not parsed_url.hostname:
-            QMessageBox.warning(
-                self, "Invalid Server URL", "Enter an absolute http:// or https:// server URL."
-            )
-            return
-
-        username, accepted = QInputDialog.getText(self, title, "Username:")
-        if not accepted or not username.strip():
-            return
-
-        password, accepted = QInputDialog.getText(
-            self, title, "Password:", QLineEdit.Password
-        )
-        if not accepted or not password:
-            return
+        server_url = server_url_input.text().strip().rstrip("/")
+        username = username_input.text().strip()
+        password = password_input.text()
 
         self.sync_server_url = server_url
         self.settings.setValue("sync/server_url", server_url)
+        if remember_username.isChecked():
+            self.settings.setValue("sync/username", username)
+        else:
+            self.settings.remove("sync/username")
         self._check_server_connection()
-        self.start_sync_worker(operation, username.strip(), password)
+        self.start_sync_worker(operation, username, password)
 
     def _check_server_connection(self):
         if self._health_worker is not None and self._health_worker.isRunning():
