@@ -1,6 +1,6 @@
 from PySide6.QtCore import Qt, Signal, Slot, QRect
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox, QSizePolicy
-from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QRegion
+from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QRegion, QPalette
 
 class ScannerView(QWidget):
     manual_isbn_submitted = Signal(str)
@@ -8,6 +8,7 @@ class ScannerView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.raw_pixmap = None
+        self._custom_status_style = None
         self.setup_ui()
 
     def setup_ui(self):
@@ -16,7 +17,6 @@ class ScannerView(QWidget):
 
         self.camera_label = QLabel("Initializing Video Feed...")
         self.camera_label.setAlignment(Qt.AlignCenter)
-        self.camera_label.setStyleSheet("border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px;")
 
         # Enforce highly restrictive layout compression metrics
         self.camera_label.setMinimumHeight(240)
@@ -37,10 +37,22 @@ class ScannerView(QWidget):
 
         self.status_label = QLabel("Center an ISBN barcode to log a book")
         self.status_label.setAlignment(Qt.AlignCenter)
-        self.status_label.setStyleSheet("font-weight: bold; font-size: 13px; padding: 3px;")
+        self.apply_palette_styles()
         layout.addWidget(self.status_label, stretch=0)
 
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+
+    def apply_palette_styles(self, palette=None):
+        palette = palette or self.palette()
+        border_color = palette.color(QPalette.Mid).name()
+        text_color = palette.color(QPalette.WindowText).name()
+        self.camera_label.setStyleSheet(
+            f"border: 1px solid {border_color}; border-radius: 6px;"
+        )
+        self.status_label.setStyleSheet(
+            self._custom_status_style
+            or f"font-weight: bold; font-size: 13px; padding: 3px; color: {text_color};"
+        )
 
     @Slot(QImage)
     def update_frame(self, q_img: QImage):
@@ -97,7 +109,5 @@ class ScannerView(QWidget):
 
     def set_status(self, text: str, style: str = None):
         self.status_label.setText(text)
-        if style:
-            self.status_label.setStyleSheet(style)
-        else:
-            self.status_label.setStyleSheet("font-weight: bold; font-size: 13px; padding: 3px;")
+        self._custom_status_style = style
+        self.apply_palette_styles()

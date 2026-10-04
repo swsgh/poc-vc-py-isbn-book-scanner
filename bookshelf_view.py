@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, QSize, QRect, Signal
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QListWidget, QListWidgetItem,
                              QFileDialog, QMessageBox, QLineEdit)
-from PySide6.QtGui import QImage, QPixmap, QFont, QPainter, QColor
+from PySide6.QtGui import QImage, QPixmap, QFont, QPainter, QColor, QPalette
 import database as db
 
 class BookshelfView(QWidget):
@@ -32,12 +32,8 @@ class BookshelfView(QWidget):
         self.grid_widget.setMovement(QListWidget.Static)
         self.grid_widget.setSelectionMode(QListWidget.NoSelection)
         self.grid_widget.setFocusPolicy(Qt.NoFocus)
-        self.grid_widget.setStyleSheet(
-            "QListWidget { background: #1a1a1a; border: none; }"
-            "QListWidget::item, QListWidget::item:hover, QListWidget::item:selected, "
-            "QListWidget::item:focus { "
-            "background: transparent; border: none; padding: 5px; }")
         self.grid_widget.itemClicked.connect(self.on_item_clicked)
+        self.apply_palette_styles()
         layout.addWidget(self.grid_widget)
 
         # Live Filter Search Field Layout Container
@@ -61,23 +57,7 @@ class BookshelfView(QWidget):
         if cover_bytes:
             pixmap.loadFromData(cover_bytes)
         else:
-            placeholder = QImage(108, 130, QImage.Format_RGB888)
-            placeholder.fill(QColor("#34495e"))
-            painter = QPainter(placeholder)
-            painter.setRenderHint(QPainter.Antialiasing)
-            painter.setPen(Qt.white)
-            painter.drawRect(5, 5, 98, 120)
-            font = painter.font()
-            font.setPointSize(9)
-            font.setBold(True)
-            painter.setFont(font)
-            painter.drawText(
-                QRect(10, 15, 88, 100),
-                Qt.AlignCenter | Qt.TextWordWrap,
-                title[:25] + ("..." if len(title) > 25 else ""),
-            )
-            painter.end()
-            pixmap = QPixmap.fromImage(placeholder)
+            pixmap = self._make_placeholder_cover(title, self.palette())
 
         item = QListWidgetItem()
         item.setIcon(pixmap)
@@ -92,6 +72,42 @@ class BookshelfView(QWidget):
 
         self.grid_widget.insertItem(0, item)
         self.filter_bookshelf_items(self.filter_input.text())
+
+    def apply_palette_styles(self, palette=None):
+        palette = palette or self.palette()
+        base_color = palette.color(QPalette.Base).name()
+        self.grid_widget.setStyleSheet(
+            f"QListWidget {{ background: {base_color}; border: none; }}"
+            "QListWidget::item, QListWidget::item:hover, QListWidget::item:selected, "
+            "QListWidget::item:focus { background: transparent; border: none; padding: 5px; }")
+
+        for index in range(self.grid_widget.count()):
+            item = self.grid_widget.item(index)
+            if not item.data(Qt.UserRole + 3):
+                item.setIcon(self._make_placeholder_cover(
+                    str(item.data(Qt.UserRole + 1)), palette
+                ))
+
+    @staticmethod
+    def _make_placeholder_cover(title: str, palette) -> QPixmap:
+        placeholder = QImage(108, 130, QImage.Format_RGB888)
+        placeholder.fill(palette.color(QPalette.AlternateBase))
+        painter = QPainter(placeholder)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(palette.color(QPalette.Mid))
+        painter.drawRect(5, 5, 98, 120)
+        font = painter.font()
+        font.setPointSize(9)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(palette.color(QPalette.Text))
+        painter.drawText(
+            QRect(10, 15, 88, 100),
+            Qt.AlignCenter | Qt.TextWordWrap,
+            title[:25] + ("..." if len(title) > 25 else ""),
+        )
+        painter.end()
+        return QPixmap.fromImage(placeholder)
 
     def filter_bookshelf_items(self, text: str):
         search_query = text.strip().lower()

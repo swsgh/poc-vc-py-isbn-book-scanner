@@ -16,6 +16,9 @@ from sync_worker import SyncWorker
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.setPalette(QApplication.palette())
+        self.setAutoFillBackground(True)
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self.setWindowTitle("ISBN Book Scanner")
         self.resize(950, 900)
         self.scanned_isbns = set()
@@ -29,47 +32,11 @@ class MainWindow(QMainWindow):
         db.configure_shared_database()
         db.init_db()
         self.setup_ui()
+        QApplication.instance().paletteChanged.connect(self.apply_palette_styles)
         self.load_books_from_db()
         self.status_reset_timer = None
 
     def setup_ui(self):
-        system_palette = QApplication.palette()
-        self.setPalette(system_palette)
-
-        window_bg = system_palette.color(system_palette.ColorGroup.Active, system_palette.ColorRole.Window).name()
-        base_bg = system_palette.color(system_palette.ColorGroup.Active, system_palette.ColorRole.Base).name()
-        text_color = system_palette.color(system_palette.ColorGroup.Active, system_palette.ColorRole.WindowText).name()
-        highlight_color = system_palette.color(system_palette.ColorGroup.Active, system_palette.ColorRole.Highlight).name()
-
-        self.setStyleSheet(f"""
-            QMainWindow {{ background-color: {window_bg}; }}
-            QWidget {{ color: {text_color}; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; }}
-            QFrame {{ border: 1px solid {window_bg}; border-radius: 8px; background-color: {base_bg}; }}
-            QPushButton {{
-                background-color: {window_bg}; color: {text_color}; border: 1px solid {highlight_color};
-                border-radius: 6px; padding: 10px; font-weight: bold;
-            }}
-            QPushButton:hover {{ background-color: {highlight_color}; color: #ffffff; }}
-            QPushButton#toggleCamBtn {{ background-color: {base_bg}; border: 1px solid {highlight_color}; padding: 8px 15px; margin-bottom: 5px; }}
-            QPushButton#toggleCamBtn:hover {{ background-color: {highlight_color}; }}
-
-            /* Gear wheel button specific polish styling */
-            QPushButton#settingsBtn {{ background-color: {base_bg}; font-size: 16px; padding: 6px 12px; margin-bottom: 5px; }}
-            QPushButton#settingsBtn:hover {{ background-color: {highlight_color}; }}
-
-            /* Popup Menu Styling Sheets */
-            QMenu {{ background-color: {base_bg}; border: 1px solid {highlight_color}; border-radius: 6px; padding: 5px; }}
-            QMenu::item {{ padding: 6px 25px 6px 20px; color: {text_color}; }}
-            QMenu::item:selected {{ background-color: #ff5555; color: #ffffff; border-radius: 4px; }}
-
-            QLineEdit {{
-                background-color: {window_bg}; border: 1px solid {window_bg};
-                border-radius: 6px; padding: 10px; color: {text_color}; font-size: 14px;
-            }}
-            QLineEdit:focus {{ border: 1px solid {highlight_color}; }}
-            QListWidget {{ background-color: {base_bg}; border: 1px solid {window_bg}; border-radius: 8px; }}
-        """)
-
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         main_layout = QVBoxLayout(main_widget)
@@ -109,6 +76,45 @@ class MainWindow(QMainWindow):
         self.scanner_view.manual_isbn_submitted.connect(self.handle_barcode)
         self.bookshelf_view.book_selected.connect(self.book_details_view.show_book_details)
         self.book_details_view.delete_requested.connect(self.remove_single_book)
+
+        self.apply_palette_styles()
+
+    def apply_palette_styles(self, system_palette=None):
+        system_palette = system_palette or QApplication.palette()
+        self.setPalette(system_palette)
+
+        window_bg = system_palette.color(system_palette.ColorGroup.Active, system_palette.ColorRole.Window).name()
+        base_bg = system_palette.color(system_palette.ColorGroup.Active, system_palette.ColorRole.Base).name()
+        text_color = system_palette.color(system_palette.ColorGroup.Active, system_palette.ColorRole.WindowText).name()
+        border_color = system_palette.color(system_palette.ColorGroup.Active, system_palette.ColorRole.Mid).name()
+        highlight_color = system_palette.color(system_palette.ColorGroup.Active, system_palette.ColorRole.Highlight).name()
+        highlighted_text_color = system_palette.color(
+            system_palette.ColorGroup.Active, system_palette.ColorRole.HighlightedText
+        ).name()
+
+        self.setStyleSheet(f"""
+            QMainWindow {{ background-color: {window_bg}; }}
+            QWidget {{ color: {text_color}; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; }}
+            QFrame {{ border: 1px solid {border_color}; border-radius: 8px; background-color: {base_bg}; }}
+            QPushButton {{
+                background-color: {window_bg}; color: {text_color}; border: 1px solid {highlight_color};
+                border-radius: 6px; padding: 10px; font-weight: bold;
+            }}
+            QPushButton:hover {{ background-color: {highlight_color}; color: {highlighted_text_color}; }}
+            QPushButton#toggleCamBtn {{ background-color: {base_bg}; border: 1px solid {highlight_color}; padding: 8px 15px; margin-bottom: 5px; }}
+            QPushButton#toggleCamBtn:hover {{ background-color: {highlight_color}; }}
+            QPushButton#settingsBtn {{ background-color: {base_bg}; font-size: 16px; padding: 6px 12px; margin-bottom: 5px; }}
+            QPushButton#settingsBtn:hover {{ background-color: {highlight_color}; }}
+            QMenu {{ background-color: {base_bg}; border: 1px solid {border_color}; border-radius: 6px; padding: 5px; }}
+            QMenu::item {{ padding: 6px 25px 6px 20px; color: {text_color}; }}
+            QMenu::item:selected {{ background-color: {highlight_color}; color: {highlighted_text_color}; border-radius: 4px; }}
+            QLineEdit {{ background-color: {base_bg}; border: 1px solid {border_color}; border-radius: 6px; padding: 10px; color: {text_color}; font-size: 14px; }}
+            QLineEdit:focus {{ border: 1px solid {highlight_color}; }}
+            QListWidget {{ background-color: {base_bg}; border: 1px solid {border_color}; border-radius: 8px; }}
+        """)
+        self.scanner_view.apply_palette_styles(system_palette)
+        self.bookshelf_view.apply_palette_styles(system_palette)
+        self.book_details_view.apply_palette_styles(system_palette)
 
     def setup_settings_menu(self):
         """Assembles the dropdown context menu and drops it behind the cogwheel button."""
