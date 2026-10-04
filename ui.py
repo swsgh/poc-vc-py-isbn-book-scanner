@@ -16,7 +16,7 @@ from sync_worker import SyncWorker
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("VibeScan Studio - Dashboard Architecture")
+        self.setWindowTitle("ISBN Book Scanner")
         self.resize(950, 900)
         self.scanned_isbns = set()
         self._active_workers = []

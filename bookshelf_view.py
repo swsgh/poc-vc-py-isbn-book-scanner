@@ -1,10 +1,10 @@
 import os
 import pandas as pd
-from PySide6.QtCore import Qt, QSize, Signal
+from PySide6.QtCore import Qt, QSize, QRect, Signal
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QListWidget, QListWidgetItem,
                              QFileDialog, QMessageBox, QLineEdit)
-from PySide6.QtGui import QImage, QPixmap, QFont
+from PySide6.QtGui import QImage, QPixmap, QFont, QPainter, QColor
 import database as db
 
 class BookshelfView(QWidget):
@@ -27,9 +27,16 @@ class BookshelfView(QWidget):
         self.grid_widget = QListWidget()
         self.grid_widget.setViewMode(QListWidget.IconMode)
         self.grid_widget.setResizeMode(QListWidget.Adjust)
-        self.grid_widget.setSpacing(15)
-        self.grid_widget.setIconSize(QSize(100, 140))
+        self.grid_widget.setSpacing(20)
+        self.grid_widget.setIconSize(QSize(110, 132))
         self.grid_widget.setMovement(QListWidget.Static)
+        self.grid_widget.setSelectionMode(QListWidget.NoSelection)
+        self.grid_widget.setFocusPolicy(Qt.NoFocus)
+        self.grid_widget.setStyleSheet(
+            "QListWidget { background: #1a1a1a; border: none; }"
+            "QListWidget::item, QListWidget::item:hover, QListWidget::item:selected, "
+            "QListWidget::item:focus { "
+            "background: transparent; border: none; padding: 5px; }")
         self.grid_widget.itemClicked.connect(self.on_item_clicked)
         layout.addWidget(self.grid_widget)
 
@@ -54,14 +61,29 @@ class BookshelfView(QWidget):
         if cover_bytes:
             pixmap.loadFromData(cover_bytes)
         else:
-            img = QImage(100, 140, QImage.Format_RGB888)
-            img.fill(Qt.darkGray)
-            pixmap = QPixmap.fromImage(img)
+            placeholder = QImage(108, 130, QImage.Format_RGB888)
+            placeholder.fill(QColor("#34495e"))
+            painter = QPainter(placeholder)
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setPen(Qt.white)
+            painter.drawRect(5, 5, 98, 120)
+            font = painter.font()
+            font.setPointSize(9)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(
+                QRect(10, 15, 88, 100),
+                Qt.AlignCenter | Qt.TextWordWrap,
+                title[:25] + ("..." if len(title) > 25 else ""),
+            )
+            painter.end()
+            pixmap = QPixmap.fromImage(placeholder)
 
         item = QListWidgetItem()
         item.setIcon(pixmap)
-        item.setText(f"{title}\n✍️ {author}")
-        item.setTextAlignment(Qt.AlignCenter)
+        item.setSizeHint(QSize(120, 142))
+        item.setText("")
+        item.setToolTip(f"{title}\n{author}")
 
         item.setData(Qt.UserRole, isbn)
         item.setData(Qt.UserRole + 1, title)
