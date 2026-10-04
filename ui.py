@@ -16,11 +16,11 @@ class MainWindow(QMainWindow):
         self.resize(950, 900)
         self.scanned_isbns = set()
         self._active_workers = []
+        self.worker = None
 
         db.init_db()
         self.setup_ui()
         self.load_books_from_db()
-        self.setup_camera()
         self.setup_laser_timer()
         self.status_reset_timer = None
 
@@ -123,16 +123,26 @@ class MainWindow(QMainWindow):
         if self.scanner_view.isVisible():
             self.scanner_view.hide()
             self.toggle_cam_btn.setText("📷 Open Scanner Suite")
+            self.stop_camera()
         else:
             self.scanner_view.show()
             self.toggle_cam_btn.setText("🙈 Hide Scanner Suite")
+            self.setup_camera()
 
     def setup_camera(self):
+        if self.worker is not None and self.worker.isRunning():
+            return
+
         self.worker = CameraWorker()
         self.worker.frame_received.connect(self.scanner_view.update_frame)
         self.worker.barcode_detected.connect(self.handle_barcode)
         self.worker.camera_unavailable.connect(self.handle_camera_unavailable)
         self.worker.start()
+
+    def stop_camera(self):
+        if self.worker is not None:
+            self.worker.stop()
+            self.worker = None
 
     def handle_camera_unavailable(self, message: str):
         self.scanner_view.set_status(message, "color: #ffaa55; font-weight: bold;")
@@ -220,7 +230,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.laser_timer.stop()
-        self.worker.stop()
+        self.stop_camera()
         for w in self._active_workers:
             w.quit()
             w.wait()
