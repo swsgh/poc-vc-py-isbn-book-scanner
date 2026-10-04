@@ -8,8 +8,8 @@ A PySide6 desktop app for scanning ISBN barcodes, looking up book details, and m
 - Use manual entry when a camera is unavailable. Input accepts 10- or 13-digit ISBNs, with hyphens allowed.
 - Look up metadata through Open Library, with Google Books as a fallback.
 - Browse, search, inspect, and remove books in the local library.
-- Export the library as CSV or Excel (`.xlsx`).
-- Store book metadata and cover images in SQLite.
+- Import and export the library as CSV from the cogwheel menu.
+- Store book metadata and cover URLs in SQLite; downloaded image files live in the local cache.
 
 The app can synchronize with the companion FastAPI server project. Local changes are queued while offline and retried the next time synchronization runs.
 
@@ -56,3 +56,7 @@ Start the companion `poc-vc-py-bookshelf-sync-server` using its README instructi
 Open the settings menu to register an account or log in, then choose **Sync Now**. Registration creates the account and signs in. On the first sync for an account, server books are downloaded and local books unknown to that account are uploaded. Later syncs exchange changes and deletions. Local additions and removals are queued; authenticated local changes sync automatically, while queued work can be retried with **Sync Now** after reconnecting. Use **Log Out of Sync** to clear the in-memory session.
 
 The app keeps the authentication token in memory and stores per-account sync checkpoints and pending local actions in `bookshelf.db`. The companion server currently has a development JWT secret and should only be used in a trusted environment until configured securely.
+
+## CSV Import and Export
+
+Use **Import CSV...** and **Export CSV...** in the cogwheel menu. CSV files contain `ISBN`, `Title`, `Author`, `Engine Source`, and `Cover URL` columns. Import requires `ISBN` and `Title`; imported books are queued for synchronization.

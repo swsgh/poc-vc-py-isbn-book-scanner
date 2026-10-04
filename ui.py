@@ -1,11 +1,12 @@
 import os
+import csv
 from urllib.parse import urlsplit
 
 from PySide6.QtCore import Qt, QTimer, Slot, QSettings
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QApplication, QPushButton, QMenu, QMessageBox,
                              QLineEdit, QLabel, QDialog, QFormLayout,
-                             QDialogButtonBox, QCheckBox)
+                             QDialogButtonBox, QCheckBox, QFileDialog)
 from PySide6.QtGui import QAction
 
 import database as db
@@ -165,9 +166,99 @@ class MainWindow(QMainWindow):
         self.settings_menu.addAction(self.logout_action)
         self.settings_menu.addSeparator()
         self.settings_menu.addAction(self.register_action)
+        self.settings_menu.addSeparator()
+        self.import_csv_action = QAction("Import CSV...", self)
+        self.import_csv_action.triggered.connect(self.import_books_csv)
+        self.export_csv_action = QAction("Export CSV...", self)
+        self.export_csv_action.triggered.connect(self.export_books_csv)
+        self.settings_menu.addAction(self.import_csv_action)
+        self.settings_menu.addAction(self.export_csv_action)
 
         # Bind context dropdown display directly to our custom cog action button anchor
         self.settings_btn.setMenu(self.settings_menu)
+
+    def export_books_csv(self):
+        rows = db.get_all_books()
+        if not rows:
+            QMessageBox.information(self, "Export CSV", "There are no books to export.")
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Export Books to CSV", os.path.expanduser("~/Desktop"), "CSV files (*.csv)"
+        )
+        if not file_path:
+            return
+        if not file_path.lower().endswith(".csv"):
+            file_path += ".csv"
+
+        try:
+            with open(file_path, "w", encoding="utf-8-sig", newline="") as csv_file:
+                writer = csv.writer(csv_file)
+                writer.writerow(["ISBN", "Title", "Author", "Engine Source", "Cover URL"])
+                writer.writerows(rows)
+        except OSError as error:
+            QMessageBox.critical(self, "Export CSV Failed", str(error))
+            return
+        QMessageBox.information(self, "Export CSV", f"Exported {len(rows)} books to:\n{file_path}")
+
+    def import_books_csv(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Import Books from CSV", os.path.expanduser("~/Desktop"), "CSV files (*.csv)"
+        )
+        if not file_path:
+            return
+
+        try:
+            with open(file_path, "r", encoding="utf-8-sig", newline="") as csv_file:
+                reader = csv.DictReader(csv_file)
+                if not reader.fieldnames:
+                    raise ValueError("The CSV file has no header row.")
+                columns = {name.strip().casefold(): name for name in reader.fieldnames if name}
+                isbn_column = columns.get("isbn")
+                title_column = columns.get("title")
+                author_column = columns.get("author") or columns.get("authors")
+                if not isbn_column or not title_column:
+                    raise ValueError("CSV must include ISBN and Title columns.")
+
+                imported = 0
+                skipped = 0
+                for row in reader:
+                    isbn = (row.get(isbn_column) or "").strip()
+                    title = (row.get(title_column) or "").strip()
+                    if not isbn or not title:
+                        skipped += 1
+                        continue
+
+                    author = (row.get(author_column) or "").strip() if author_column else ""
+                    engine_source = (row.get(columns.get("engine source", "")) or "").strip()
+                    cover_url = (row.get(columns.get("cover url", "")) or "").strip()
+                    existing = db.get_book_by_isbn(isbn)
+                    if existing and existing[4] != cover_url:
+                        remove_cached_cover(isbn)
+                    if not db.save_book(
+                        isbn, title, author, cover_url,
+                        queue_sync=True, engine_source=engine_source or "CSV Import",
+                    ):
+                        skipped += 1
+                        continue
+
+                    self.scanned_isbns.add(isbn)
+                    self.bookshelf_view.remove_item_by_isbn(isbn)
+                    self.bookshelf_view.render_book_item(title, author, cover_url, isbn)
+                    if cover_url and not has_cached_cover(isbn):
+                        self._download_cover(isbn, cover_url)
+                    if self.book_details_view.current_isbn == isbn:
+                        self.book_details_view.show_book_details(isbn, title, author, cover_url)
+                    imported += 1
+        except (OSError, csv.Error, ValueError) as error:
+            QMessageBox.critical(self, "Import CSV Failed", str(error))
+            return
+
+        if imported and self.sync_token:
+            self.start_sync_worker("sync")
+        QMessageBox.information(
+            self, "Import CSV", f"Imported {imported} books; skipped {skipped} invalid rows."
+        )
 
     def toggle_scanner_view(self):
         if self.scanner_view.isVisible():

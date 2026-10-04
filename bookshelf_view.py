@@ -1,11 +1,8 @@
-import os
-import pandas as pd
 from PySide6.QtCore import Qt, QSize, QRect, Signal
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QListWidget, QListWidgetItem,
-                             QFileDialog, QMessageBox, QLineEdit)
+                             QLineEdit)
 from PySide6.QtGui import QImage, QPixmap, QFont, QPainter, QColor, QPalette
-import database as db
 from cover_cache import cover_path, has_cached_cover
 
 class BookshelfView(QWidget):
@@ -44,14 +41,6 @@ class BookshelfView(QWidget):
         self.filter_input.textChanged.connect(self.filter_bookshelf_items)
         filter_layout.addWidget(self.filter_input)
         layout.addLayout(filter_layout)
-
-        # Operational Footer Actions Row (Clear button removed)
-        btn_layout = QHBoxLayout()
-        self.export_btn = QPushButton("📁 Export Data Sheet")
-        self.export_btn.setObjectName("exportBtn")
-        self.export_btn.clicked.connect(self.export_data)
-        btn_layout.addWidget(self.export_btn)
-        layout.addLayout(btn_layout)
 
     def render_book_item(self, title: str, author: str, cover_url: str, isbn: str = ""):
         if cover_url and has_cached_cover(isbn):
@@ -146,33 +135,6 @@ class BookshelfView(QWidget):
             if item.data(Qt.UserRole) == isbn:
                 self.grid_widget.takeItem(i)
                 break
-
-    def export_data(self):
-        rows = db.get_all_books()
-        if not rows:
-            QMessageBox.warning(self, "Export Failed", "There are no books in your database to export yet!")
-            return
-
-        df = pd.DataFrame([
-            {"ISBN": isbn, "Title": title, "Author": author}
-            for isbn, title, author, _, _ in rows
-        ])
-        file_path, selected_filter = QFileDialog.getSaveFileName(
-            self, "Export Book List", os.path.expanduser("~/Desktop"),
-            "Excel Spreadsheet (*.xlsx);;CSV Document (*.csv)"
-        )
-
-        if file_path:
-            try:
-                if selected_filter == "Excel Spreadsheet (*.xlsx)":
-                    if not file_path.endswith('.xlsx'): file_path += '.xlsx'
-                    df.to_excel(file_path, index=False)
-                else:
-                    if not file_path.endswith('.csv'): file_path += '.csv'
-                    df.to_csv(file_path, index=False, encoding='utf-8')
-                QMessageBox.information(self, "Success!", f"Library exported cleanly to:\n{file_path}")
-            except Exception as e:
-                QMessageBox.critical(self, "Export Error", f"Could not export data: {e}")
 
     def clear_ui_grid(self):
         """Called externally by UI orchestrator to clear visual elements."""
