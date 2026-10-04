@@ -29,7 +29,6 @@ class MainWindow(QMainWindow):
         db.init_db()
         self.setup_ui()
         self.load_books_from_db()
-        self.setup_laser_timer()
         self.status_reset_timer = None
 
     def setup_ui(self):
@@ -269,11 +268,6 @@ class MainWindow(QMainWindow):
         self.logout_action.setEnabled(False)
         self.statusBar().showMessage("Signed out of sync.", 5000)
 
-    def setup_laser_timer(self):
-        self.laser_timer = QTimer(self)
-        self.laser_timer.timeout.connect(self.scanner_view.animate_laser)
-        self.laser_timer.start(16)
-
     def load_books_from_db(self):
         rows = db.get_all_books()
         for row in rows:
@@ -356,7 +350,6 @@ class MainWindow(QMainWindow):
             self._active_workers.remove(worker)
 
     def closeEvent(self, event):
-        self.laser_timer.stop()
         if self._sync_worker is not None and self._sync_worker.isRunning():
             self._sync_worker.stop()
             self._sync_worker.wait()

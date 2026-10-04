@@ -45,7 +45,13 @@ class CameraWorker(QThread):
                     break
 
                 frame = cv2.flip(frame, 1)
-                barcodes = decode(frame, symbols=[ZBarSymbol.EAN13, ZBarSymbol.UPCA])
+                height, width = frame.shape[:2]
+                crop_width = int(width * 0.7)
+                crop_height = int(height * 0.25)
+                crop_x = (width - crop_width) // 2
+                crop_y = (height - crop_height) // 2
+                scan_zone = frame[crop_y:crop_y + crop_height, crop_x:crop_x + crop_width]
+                barcodes = decode(scan_zone, symbols=[ZBarSymbol.EAN13, ZBarSymbol.UPCA])
                 for barcode in barcodes:
                     barcode_data = barcode.data.decode("utf-8")
                     if len(barcode_data) in (10, 13) and barcode_data.isdigit():

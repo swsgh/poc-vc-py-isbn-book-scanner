@@ -1,6 +1,6 @@
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtCore import Qt, Signal, Slot, QRect
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox, QSizePolicy
-from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor
+from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QRegion
 
 class ScannerView(QWidget):
     manual_isbn_submitted = Signal(str)
@@ -8,8 +8,6 @@ class ScannerView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.raw_pixmap = None
-        self.laser_y = 0
-        self.laser_direction = 1
         self.setup_ui()
 
     def setup_ui(self):
@@ -51,28 +49,39 @@ class ScannerView(QWidget):
         pixmap = QPixmap.fromImage(mirrored_img)
         if not self.camera_label.size().isEmpty():
             self.raw_pixmap = pixmap.scaled(self.camera_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.repaint_laser_overlay()
+            self.repaint_scan_overlay()
 
-    def animate_laser(self):
-        h = self.camera_label.height()
-        if h > 0:
-            self.laser_y += self.laser_direction * 3
-            if self.laser_y >= h - 10:
-                self.laser_direction = -1
-            elif self.laser_y <= 10:
-                self.laser_direction = 1
-            self.repaint_laser_overlay()
-
-    def repaint_laser_overlay(self):
+    def repaint_scan_overlay(self):
         if self.raw_pixmap is None or self.raw_pixmap.isNull():
             return
 
         canvas = self.raw_pixmap.copy()
         painter = QPainter(canvas)
-        pen = QPen(QColor(255, 40, 40, 220))
-        pen.setWidth(3)
-        painter.setPen(pen)
-        painter.drawLine(0, self.laser_y, canvas.width(), self.laser_y)
+        box_width = int(canvas.width() * 0.7)
+        box_height = int(canvas.height() * 0.25)
+        x = (canvas.width() - box_width) // 2
+        y = (canvas.height() - box_height) // 2
+        scan_zone = QRect(x, y, box_width, box_height)
+
+        outside_zone = QRegion(canvas.rect()).subtracted(QRegion(scan_zone))
+        painter.setClipRegion(outside_zone)
+        painter.fillRect(canvas.rect(), QColor(0, 0, 0, 100))
+        painter.setClipping(False)
+
+        corner_length = min(20, box_width // 4, box_height // 3)
+        painter.setPen(QPen(QColor("#27ae60"), 4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        painter.drawLine(x, y, x + corner_length, y)
+        painter.drawLine(x, y, x, y + corner_length)
+        painter.drawLine(x + box_width, y, x + box_width - corner_length, y)
+        painter.drawLine(x + box_width, y, x + box_width, y + corner_length)
+        painter.drawLine(x, y + box_height, x + corner_length, y + box_height)
+        painter.drawLine(x, y + box_height, x, y + box_height - corner_length)
+        painter.drawLine(x + box_width, y + box_height, x + box_width - corner_length, y + box_height)
+        painter.drawLine(x + box_width, y + box_height, x + box_width, y + box_height - corner_length)
+
+        painter.setPen(QPen(QColor("#e74c3c"), 2, Qt.DashLine))
+        center_y = y + box_height // 2
+        painter.drawLine(x + 5, center_y, x + box_width - 5, center_y)
         painter.end()
         self.camera_label.setPixmap(canvas)
 
