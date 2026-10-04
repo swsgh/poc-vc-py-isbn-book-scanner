@@ -2,7 +2,7 @@ import os
 
 from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                             QSplitter, QApplication, QPushButton, QMenu, QMessageBox,
+                             QApplication, QPushButton, QMenu, QMessageBox,
                              QInputDialog, QLineEdit)
 from PySide6.QtGui import QAction
 
@@ -90,8 +90,6 @@ class MainWindow(QMainWindow):
 
         main_layout.addLayout(top_bar_layout)
 
-        vertical_splitter = QSplitter(Qt.Vertical)
-
         self.scanner_view = ScannerView()
         self.bookshelf_view = BookshelfView()
         self.book_details_view = BookDetailsView()
@@ -104,11 +102,8 @@ class MainWindow(QMainWindow):
         shelf_layout.addWidget(self.bookshelf_view, stretch=3)
         shelf_layout.addWidget(self.book_details_view, stretch=1)
 
-        vertical_splitter.addWidget(self.scanner_view)
-        vertical_splitter.addWidget(shelf_container)
-
-        vertical_splitter.setSizes([250, 650])
-        main_layout.addWidget(vertical_splitter)
+        main_layout.addWidget(self.scanner_view)
+        main_layout.addWidget(shelf_container, stretch=1)
 
         self.scanner_view.manual_isbn_submitted.connect(self.handle_barcode)
         self.bookshelf_view.book_selected.connect(self.book_details_view.show_book_details)
