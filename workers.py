@@ -3,6 +3,7 @@ import time
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QImage
 import requests
+from cover_cache import download_cover
 
 # Conditional compilation setup: only import desktop modules when not on Android
 ON_ANDROID = (sys.platform == "android") or hasattr(sys, "getandroidsdk")
@@ -77,23 +78,25 @@ class CameraWorker(QThread):
 
 class FetchBookWorker(QThread):
     """Network metadata lookup remains universal across PC and Android."""
-    book_fetched = Signal(str, str, str, bytes)
+    book_fetched = Signal(str, str, str, str)
 
     def __init__(self, isbn: str):
         super().__init__()
         self.isbn = isbn
 
     def run(self):
-        success, title, author, cover_bytes = self.fetch_from_open_library()
+        success, title, author, cover_url = self.fetch_from_open_library()
         if not success or title.startswith("Unknown Book"):
-            success, title, author, cover_bytes = self.fetch_from_google_books()
+            success, title, author, cover_url = self.fetch_from_google_books()
 
         if not success:
             title = f"Unknown Book ({self.isbn})"
             author = "Unknown Author"
-            cover_bytes = b""
+            cover_url = ""
 
-        self.book_fetched.emit(self.isbn, title, author, cover_bytes)
+        if cover_url:
+            download_cover(self.isbn, cover_url)
+        self.book_fetched.emit(self.isbn, title, author, cover_url)
 
     def fetch_from_open_library(self):
         try:
@@ -108,16 +111,11 @@ class FetchBookWorker(QThread):
                     title = info.get("title", "Unknown Title")
                     authors = ", ".join([a.get("name", "Unknown") for a in info.get("authors", [])]) or "Unknown Author"
 
-                    cover_bytes = b""
                     cover_url = info.get("cover", {}).get("medium") or info.get("cover", {}).get("small")
-                    if cover_url:
-                        img_res = requests.get(cover_url, timeout=4)
-                        if img_res.status_code == 200:
-                            cover_bytes = img_res.content
-                    return True, title, authors, cover_bytes
+                    return True, title, authors, cover_url or ""
         except Exception as e:
             print(f"[API Error] Open Library skipped: {e}")
-        return False, "", "", b""
+        return False, "", "", ""
 
     def fetch_from_google_books(self):
         try:
@@ -131,16 +129,12 @@ class FetchBookWorker(QThread):
                     title = vol_info.get("title", "Unknown Title")
                     authors = ", ".join(vol_info.get("authors", [])) or "Unknown Author"
 
-                    cover_bytes = b""
                     img_links = vol_info.get("imageLinks", {})
                     cover_url = img_links.get("thumbnail") or img_links.get("smallThumbnail")
                     if cover_url:
                         if cover_url.startswith("http://"):
                             cover_url = cover_url.replace("http://", "https://")
-                        img_res = requests.get(cover_url, timeout=4)
-                        if img_res.status_code == 200:
-                            cover_bytes = img_res.content
-                    return True, title, authors, cover_bytes
+                    return True, title, authors, cover_url or ""
         except Exception as e:
             print(f"[API Error] Google Books skipped: {e}")
-        return False, "", "", b""
+        return False, "", "", ""

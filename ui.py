@@ -9,11 +9,12 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PySide6.QtGui import QAction
 
 import database as db
+from cover_cache import has_cached_cover, remove_cached_cover
 from workers import CameraWorker, FetchBookWorker
 from scanner_view import ScannerView
 from bookshelf_view import BookshelfView
 from book_details_view import BookDetailsView
-from sync_worker import ServerHealthCheckWorker, SyncWorker
+from sync_worker import CoverDownloadWorker, ServerHealthCheckWorker, SyncWorker
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -30,6 +31,7 @@ class MainWindow(QMainWindow):
         self._sync_requested = False
         self._health_worker = None
         self._health_check_pending = False
+        self._cover_downloads = set()
         self.sync_token = ""
         self.sync_username = ""
         self.settings = QSettings("Bookshelf", "ISBNBookScanner")
@@ -349,14 +351,17 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Signed in to sync as {username}.", 5000)
 
     def on_sync_succeeded(self, downloaded, removed, uploaded: int, deleted: int):
-        for isbn, title, author, cover_bytes in downloaded:
+        for isbn, title, author, cover_url in downloaded:
             self.scanned_isbns.add(isbn)
             self.bookshelf_view.remove_item_by_isbn(isbn)
-            self.bookshelf_view.render_book_item(title, author, cover_bytes, isbn)
+            self.bookshelf_view.render_book_item(title, author, cover_url, isbn)
+            if cover_url and not has_cached_cover(isbn):
+                self._download_cover(isbn, cover_url)
 
         for isbn in removed:
             self.scanned_isbns.discard(isbn)
             self.bookshelf_view.remove_item_by_isbn(isbn)
+            remove_cached_cover(isbn)
             if self.book_details_view.current_isbn == isbn:
                 self.book_details_view.current_isbn = None
                 self.book_details_view.hide()
@@ -400,9 +405,29 @@ class MainWindow(QMainWindow):
     def load_books_from_db(self):
         rows = db.get_all_books()
         for row in rows:
-            isbn, title, author, _engine_source, cover_blob = row
+            isbn, title, author, _engine_source, cover_url = row
             self.scanned_isbns.add(isbn)
-            self.bookshelf_view.render_book_item(title, author, cover_blob, isbn)
+            self.bookshelf_view.render_book_item(title, author, cover_url, isbn)
+            if cover_url and not has_cached_cover(isbn):
+                self._download_cover(isbn, cover_url)
+
+    def _download_cover(self, isbn: str, cover_url: str):
+        if not cover_url or isbn in self._cover_downloads or has_cached_cover(isbn):
+            return
+        worker = CoverDownloadWorker(isbn, cover_url)
+        worker.cover_cached.connect(self._on_cover_cached)
+        worker.finished.connect(lambda worker=worker: self._cleanup_worker(worker))
+        self._cover_downloads.add(isbn)
+        self._active_workers.append(worker)
+        worker.start()
+
+    def _on_cover_cached(self, isbn: str, succeeded: bool):
+        self._cover_downloads.discard(isbn)
+        if not succeeded:
+            return
+        self.bookshelf_view.refresh_item_cover(isbn)
+        if self.book_details_view.current_isbn == isbn:
+            self.book_details_view.refresh_cover()
 
     @Slot(str)
     def handle_barcode(self, isbn: str):
@@ -430,17 +455,17 @@ class MainWindow(QMainWindow):
             )
             self.status_reset_timer.start(2000)
 
-    @Slot(str, str, str, bytes)
-    def save_and_render_book(self, isbn: str, title: str, author: str, cover_bytes: bytes):
+    @Slot(str, str, str, str)
+    def save_and_render_book(self, isbn: str, title: str, author: str, cover_url: str):
         if self.status_reset_timer and self.status_reset_timer.isActive():
             self.status_reset_timer.stop()
 
-        db.save_book(isbn, title, author, cover_bytes)
-        self.bookshelf_view.render_book_item(title, author, cover_bytes, isbn)
+        db.save_book(isbn, title, author, cover_url)
+        self.bookshelf_view.render_book_item(title, author, cover_url, isbn)
         if self.sync_token:
             self.start_sync_worker("sync")
         self.scanner_view.set_status(f"✅ Logged: {title}")
-        self.book_details_view.show_book_details(isbn, title, author, cover_bytes)
+        self.book_details_view.show_book_details(isbn, title, author, cover_url)
 
         self.status_reset_timer = QTimer()
         self.status_reset_timer.setSingleShot(True)
@@ -454,6 +479,7 @@ class MainWindow(QMainWindow):
             self.scanned_isbns.remove(isbn)
         db.delete_book_by_isbn(isbn)
         self.bookshelf_view.remove_item_by_isbn(isbn)
+        remove_cached_cover(isbn)
         if self.sync_token:
             self.start_sync_worker("sync")
         self.scanner_view.set_status("🗑️ Book removed from collection.")

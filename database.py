@@ -24,7 +24,7 @@ BOOKS_SCHEMA = """
         title TEXT NOT NULL,
         authors TEXT,
         engine_source TEXT,
-        cover_blob BLOB
+        cover_url TEXT
     )
 """
 
@@ -73,7 +73,7 @@ def save_book(
     isbn: str,
     title: str,
     author: str,
-    cover_bytes: bytes,
+    cover_url: str,
     queue_sync=True,
     engine_source="Python ISBN Scanner",
 ):
@@ -82,8 +82,8 @@ def save_book(
         with _connect() as connection:
             connection.execute(
                 "INSERT OR REPLACE INTO books "
-                "(isbn, title, authors, engine_source, cover_blob) VALUES (?, ?, ?, ?, ?)",
-                (isbn, title, author, engine_source, sqlite3.Binary(cover_bytes)),
+                "(isbn, title, authors, engine_source, cover_url) VALUES (?, ?, ?, ?, ?)",
+                (isbn, title, author, engine_source, cover_url),
             )
             if queue_sync:
                 _queue_sync_action(connection, isbn, "UPLOAD")
@@ -97,14 +97,14 @@ def get_all_books():
     """Retrieves all stored books from the shelf database collection rows."""
     with _connect() as connection:
         return connection.execute(
-            "SELECT isbn, title, authors, engine_source, cover_blob FROM books"
+            "SELECT isbn, title, authors, engine_source, cover_url FROM books"
         ).fetchall()
 
 
 def get_book_by_isbn(isbn: str):
     with _connect() as connection:
         return connection.execute(
-            "SELECT isbn, title, authors, engine_source, cover_blob FROM books WHERE isbn = ?",
+            "SELECT isbn, title, authors, engine_source, cover_url FROM books WHERE isbn = ?",
             (isbn,),
         ).fetchone()
 

@@ -1,6 +1,7 @@
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QMessageBox
 from PySide6.QtGui import QImage, QPixmap, QFont, QPalette
+from cover_cache import cover_path, has_cached_cover
 
 
 class BookDetailsView(QWidget):
@@ -10,7 +11,7 @@ class BookDetailsView(QWidget):
         super().__init__(parent)
         self.current_isbn = None
         self.current_title = ""
-        self.current_cover_bytes = b""
+        self.current_cover_url = ""
         self.setup_ui()
 
     def setup_ui(self):
@@ -97,7 +98,7 @@ class BookDetailsView(QWidget):
             f"border: 1px solid {border_color}; border-radius: 6px; padding: 10px; font-weight: bold; }}"
             f"QPushButton:hover {{ background-color: {highlight_color}; color: {highlighted_text}; }}"
         )
-        if self.current_isbn and not self.current_cover_bytes:
+        if self.current_isbn and not has_cached_cover(self.current_isbn):
             self._show_placeholder_cover(palette)
 
     def _show_placeholder_cover(self, palette=None):
@@ -106,17 +107,16 @@ class BookDetailsView(QWidget):
         image.fill(palette.color(QPalette.AlternateBase))
         self.cover_label.setPixmap(QPixmap.fromImage(image))
 
-    def show_book_details(self, isbn: str, title: str, author: str, cover_bytes: bytes):
+    def show_book_details(self, isbn: str, title: str, author: str, cover_url: str):
         self.current_isbn = isbn
         self.current_title = title
-        self.current_cover_bytes = cover_bytes
+        self.current_cover_url = cover_url
         self.isbn_label.setText(f"ISBN: {isbn}")
         self.title_label.setText(title)
         self.author_label.setText(f"by {author}")
 
-        pixmap = QPixmap()
-        if cover_bytes:
-            pixmap.loadFromData(cover_bytes)
+        if cover_url and has_cached_cover(isbn):
+            pixmap = QPixmap(str(cover_path(isbn)))
         else:
             palette = self.palette()
             self._show_placeholder_cover(palette)
@@ -125,6 +125,13 @@ class BookDetailsView(QWidget):
         scaled_pixmap = pixmap.scaled(self.cover_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.cover_label.setPixmap(scaled_pixmap)
         self.show()
+
+    def refresh_cover(self):
+        if self.current_isbn and self.current_cover_url and has_cached_cover(self.current_isbn):
+            pixmap = QPixmap(str(cover_path(self.current_isbn)))
+            self.cover_label.setPixmap(pixmap.scaled(
+                self.cover_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ))
 
     def on_delete_clicked(self):
         if not self.current_isbn:

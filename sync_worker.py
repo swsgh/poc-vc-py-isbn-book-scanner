@@ -1,4 +1,3 @@
-import base64
 import json
 from urllib.parse import quote, urlsplit
 
@@ -6,6 +5,7 @@ import requests
 from PySide6.QtCore import QThread, Signal
 
 import database as db
+from cover_cache import download_cover
 
 
 class ServerHealthCheckWorker(QThread):
@@ -22,6 +22,18 @@ class ServerHealthCheckWorker(QThread):
         except (requests.RequestException, ValueError, AttributeError):
             connected = False
         self.connection_checked.emit(connected)
+
+
+class CoverDownloadWorker(QThread):
+    cover_cached = Signal(str, bool)
+
+    def __init__(self, isbn, cover_url):
+        super().__init__()
+        self.isbn = isbn
+        self.cover_url = cover_url
+
+    def run(self):
+        self.cover_cached.emit(self.isbn, download_cover(self.isbn, self.cover_url))
 
 
 class SyncWorker(QThread):
@@ -135,17 +147,18 @@ class SyncWorker(QThread):
                 removed.append(isbn)
                 continue
 
-            cover_data = update.get("coverDataBase64", "")
-            cover_bytes = base64.b64decode(cover_data, validate=True) if cover_data else b""
+            cover_url = update.get("coverUrl", "") or ""
+            if cover_url:
+                download_cover(isbn, cover_url)
             title = update.get("title", "")
             author = update.get("authors", "")
             engine_source = update.get("engineSource", "")
             if not db.save_book(
-                isbn, title, author, cover_bytes,
+                isbn, title, author, cover_url,
                 queue_sync=False, engine_source=engine_source,
             ):
                 raise RuntimeError(f"Could not save the synchronized book {isbn} locally.")
-            downloaded.append((isbn, title, author, cover_bytes))
+            downloaded.append((isbn, title, author, cover_url))
 
         # The server timestamps records in whole seconds; retain a one-second overlap
         # so updates created during a sync are not skipped at the checkpoint boundary.
@@ -187,20 +200,17 @@ class SyncWorker(QThread):
 
     def _upload_book(self, session, token, book):
         self._check_interruption()
-        isbn, title, author, engine_source, cover_bytes = book
+        isbn, title, author, engine_source, cover_url = book
         metadata = json.dumps({
             "isbn": isbn,
             "title": title,
             "authors": author,
             "engineSource": engine_source or "Python ISBN Scanner",
+            "coverUrl": cover_url or "",
         })
-        files = {"metadata": (None, metadata)}
-        if cover_bytes:
-            files["cover"] = ("cover.jpg", cover_bytes, "application/octet-stream")
-
         response = session.post(
             f"{self.server_url}/api/books/upload",
-            files=files,
+            data={"metadata": metadata},
             headers={"Authorization": f"Bearer {token}"},
             timeout=(5, 30),
         )
