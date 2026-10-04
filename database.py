@@ -10,6 +10,7 @@ DB_NAME = ""
 def configure_shared_database():
     global DB_NAME
 
+    QCoreApplication.setOrganizationName("Bookshelf")
     QCoreApplication.setApplicationName("ISBNBookScanner")
     app_data = Path(QStandardPaths.writableLocation(QStandardPaths.AppDataLocation))
     app_data.mkdir(parents=True, exist_ok=True)
