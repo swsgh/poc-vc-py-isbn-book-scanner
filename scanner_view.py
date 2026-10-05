@@ -23,6 +23,11 @@ class ScannerView(QWidget):
         self.camera_label.setMaximumHeight(260)
         layout.addWidget(self.camera_label, stretch=0)
 
+        self.status_label = QLabel("Center an ISBN barcode to add a book")
+        self.status_label.setAlignment(Qt.AlignCenter)
+        self.apply_palette_styles()
+        layout.addWidget(self.status_label, stretch=0)
+
         manual_layout = QHBoxLayout()
         self.manual_input = QLineEdit()
         self.manual_input.setPlaceholderText("Type an ISBN code manually (e.g. 9781449392178)...")
@@ -34,11 +39,6 @@ class ScannerView(QWidget):
         self.manual_btn.clicked.connect(self.submit_manual_isbn)
         manual_layout.addWidget(self.manual_btn)
         layout.addLayout(manual_layout)
-
-        self.status_label = QLabel("Center an ISBN barcode to add a book")
-        self.status_label.setAlignment(Qt.AlignCenter)
-        self.apply_palette_styles()
-        layout.addWidget(self.status_label, stretch=0)
 
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
 

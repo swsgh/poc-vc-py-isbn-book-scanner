@@ -126,6 +126,7 @@ class FetchBookWorker(QThread):
         super().__init__()
         self.isbn = isbn
         self.cover_candidates = []
+        self.open_library_failure = ""
 
     def run(self):
         success, title, author, cover_url, publication_date, publisher, page_count = (
@@ -133,6 +134,8 @@ class FetchBookWorker(QThread):
         )
         used_google_books = False
         if not success or title.startswith("Unknown Book"):
+            reason = self.open_library_failure or "Open Library returned no matching book."
+            self.status_changed.emit(f"{reason} Trying Google Books...", bool(self.open_library_failure))
             google_result = self.fetch_from_google_books()
             used_google_books = True
             if google_result[0]:
@@ -140,6 +143,10 @@ class FetchBookWorker(QThread):
                     google_result
                 )
         elif not self.cover_candidates:
+            self.status_changed.emit(
+                "Open Library has no cover image for this book. Trying Google Books for a cover.",
+                False,
+            )
             google_result = self.fetch_from_google_books()
             used_google_books = True
             if google_result[0] and google_result[3]:
@@ -155,6 +162,9 @@ class FetchBookWorker(QThread):
 
         cover_url = self._download_best_cover(cover_url)
         if not cover_url and not used_google_books:
+            self.status_changed.emit(
+                "Open Library cover download failed. Trying Google Books for a cover.", False
+            )
             google_result = self.fetch_from_google_books()
             if google_result[0]:
                 google_cover_url = self._download_best_cover(google_result[3])
@@ -185,14 +195,13 @@ class FetchBookWorker(QThread):
         return ""
 
     def fetch_from_open_library(self):
+        self.open_library_failure = ""
         try:
             url = "https://openlibrary.org/api/books"
             params = {"bibkeys": f"ISBN:{self.isbn}", "format": "json", "jscmd": "data"}
             res = requests.get(url, params=params, timeout=4)
             if res.status_code != 200:
-                self.status_changed.emit(
-                    _provider_http_error("Open Library", res.status_code), True
-                )
+                self.open_library_failure = _provider_http_error("Open Library", res.status_code)
                 return False, "", "", "", "", "", 0
             if res.status_code == 200:
                 data = res.json()
@@ -214,10 +223,11 @@ class FetchBookWorker(QThread):
                         page_count = 0
                     return (True, title, authors, cover_url or "",
                             info.get("publish_date", "") or "", str(first_publisher), page_count)
+            self.open_library_failure = "No matching ISBN was found in Open Library."
         except requests.RequestException as error:
-            self.status_changed.emit(_provider_request_error("Open Library", error), True)
+            self.open_library_failure = _provider_request_error("Open Library", error)
         except ValueError as error:
-            self.status_changed.emit(f"Open Library returned invalid data: {error}", True)
+            self.open_library_failure = f"Open Library returned invalid data: {error}"
         return False, "", "", "", "", "", 0
 
     def fetch_from_google_books(self):

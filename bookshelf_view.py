@@ -21,6 +21,14 @@ class BookshelfView(QWidget):
         log_title.setFont(QFont("Segoe UI", 12, QFont.Bold))
         layout.addWidget(log_title)
 
+        # Live Filter Search Field Layout Container
+        filter_layout = QHBoxLayout()
+        self.filter_input = QLineEdit()
+        self.filter_input.setPlaceholderText("🔎 Type to filter bookshelf by title or author name...")
+        self.filter_input.textChanged.connect(self.filter_bookshelf_items)
+        filter_layout.addWidget(self.filter_input)
+        layout.addLayout(filter_layout)
+
         # The Library Matrix Grid View
         self.grid_widget = QListWidget()
         self.grid_widget.setViewMode(QListWidget.IconMode)
@@ -33,14 +41,6 @@ class BookshelfView(QWidget):
         self.grid_widget.itemClicked.connect(self.on_item_clicked)
         self.apply_palette_styles()
         layout.addWidget(self.grid_widget)
-
-        # Live Filter Search Field Layout Container
-        filter_layout = QHBoxLayout()
-        self.filter_input = QLineEdit()
-        self.filter_input.setPlaceholderText("🔎 Type to filter bookshelf by title or author name...")
-        self.filter_input.textChanged.connect(self.filter_bookshelf_items)
-        filter_layout.addWidget(self.filter_input)
-        layout.addLayout(filter_layout)
 
     def render_book_item(
         self, title: str, author: str, cover_url: str, isbn: str = "",
