@@ -5,7 +5,7 @@ import requests
 from PySide6.QtCore import QThread, Signal
 
 import database as db
-from cover_cache import download_cover
+from cover_cache import download_cover_with_error
 
 
 class ServerHealthCheckWorker(QThread):
@@ -26,6 +26,7 @@ class ServerHealthCheckWorker(QThread):
 
 class CoverDownloadWorker(QThread):
     cover_cached = Signal(str, bool)
+    status_changed = Signal(str, bool)
 
     def __init__(self, isbn, cover_url):
         super().__init__()
@@ -33,7 +34,10 @@ class CoverDownloadWorker(QThread):
         self.cover_url = cover_url
 
     def run(self):
-        self.cover_cached.emit(self.isbn, download_cover(self.isbn, self.cover_url))
+        succeeded, message = download_cover_with_error(self.isbn, self.cover_url)
+        if not succeeded:
+            self.status_changed.emit(f"ISBN {self.isbn}: {message}", True)
+        self.cover_cached.emit(self.isbn, succeeded)
 
 
 class SyncWorker(QThread):
@@ -228,10 +232,16 @@ class SyncWorker(QThread):
     def _error_message(error):
         response = getattr(error, "response", None)
         if response is not None:
+            if response.status_code == 429:
+                return "Too many requests (HTTP 429). Wait a moment before trying again."
             try:
                 detail = response.json().get("detail")
                 if detail:
-                    return str(detail)
+                    return f"HTTP {response.status_code}: {detail}"
             except (ValueError, AttributeError):
                 pass
+            if response.status_code:
+                return f"Request failed (HTTP {response.status_code})."
+        if isinstance(error, requests.Timeout):
+            return "The sync request timed out. Check the connection and try again."
         return str(error)

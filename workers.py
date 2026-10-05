@@ -3,7 +3,7 @@ import time
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QImage
 import requests
-from cover_cache import download_cover
+from cover_cache import download_cover_with_error
 
 # Conditional compilation setup: only import desktop modules when not on Android
 ON_ANDROID = (sys.platform == "android") or hasattr(sys, "getandroidsdk")
@@ -34,6 +34,24 @@ def _google_books_cover_urls(volume_info):
         image_links.get(size)
         for size in ("extraLarge", "large", "medium", "small", "thumbnail", "smallThumbnail")
     )
+
+
+def _provider_http_error(provider, status_code, detail=""):
+    if status_code == 429:
+        return f"{provider} rate limit reached (HTTP 429). Try again shortly."
+    if status_code in (401, 403):
+        return f"{provider} rejected the request (HTTP {status_code}). Check API access settings."
+    suffix = f": {detail}" if detail else ""
+    return f"{provider} request failed (HTTP {status_code}){suffix}"
+
+
+def _provider_request_error(provider, error):
+    response = getattr(error, "response", None)
+    if response is not None and response.status_code:
+        return _provider_http_error(provider, response.status_code)
+    if isinstance(error, requests.Timeout):
+        return f"{provider} request timed out."
+    return f"{provider} network request failed: {error}"
 
 
 class CameraWorker(QThread):
@@ -102,6 +120,7 @@ class CameraWorker(QThread):
 class FetchBookWorker(QThread):
     """Network metadata lookup remains universal across PC and Android."""
     book_fetched = Signal(str, str, str, str, str, str, int)
+    status_changed = Signal(str, bool)
 
     def __init__(self, isbn: str):
         super().__init__()
@@ -146,14 +165,23 @@ class FetchBookWorker(QThread):
                     cover_url = google_cover_url
         if not cover_url:
             cover_url = ""
+            if not success:
+                self.status_changed.emit(
+                    f"No metadata found for ISBN {self.isbn}; adding it as an unknown book.", True
+                )
         self.book_fetched.emit(
             self.isbn, title, author, cover_url, publication_date, publisher, page_count
         )
 
     def _download_best_cover(self, cover_url):
+        last_error = ""
         for candidate in self.cover_candidates or ([cover_url] if cover_url else []):
-            if download_cover(self.isbn, candidate):
+            downloaded, error = download_cover_with_error(self.isbn, candidate)
+            if downloaded:
                 return candidate
+            last_error = error
+        if last_error:
+            self.status_changed.emit(last_error, True)
         return ""
 
     def fetch_from_open_library(self):
@@ -161,6 +189,11 @@ class FetchBookWorker(QThread):
             url = "https://openlibrary.org/api/books"
             params = {"bibkeys": f"ISBN:{self.isbn}", "format": "json", "jscmd": "data"}
             res = requests.get(url, params=params, timeout=4)
+            if res.status_code != 200:
+                self.status_changed.emit(
+                    _provider_http_error("Open Library", res.status_code), True
+                )
+                return False, "", "", "", "", "", 0
             if res.status_code == 200:
                 data = res.json()
                 key = f"ISBN:{self.isbn}"
@@ -181,8 +214,10 @@ class FetchBookWorker(QThread):
                         page_count = 0
                     return (True, title, authors, cover_url or "",
                             info.get("publish_date", "") or "", str(first_publisher), page_count)
-        except Exception as e:
-            print(f"[API Error] Open Library skipped: {e}")
+        except requests.RequestException as error:
+            self.status_changed.emit(_provider_request_error("Open Library", error), True)
+        except ValueError as error:
+            self.status_changed.emit(f"Open Library returned invalid data: {error}", True)
         return False, "", "", "", "", "", 0
 
     def fetch_from_google_books(self):
@@ -190,6 +225,11 @@ class FetchBookWorker(QThread):
             url = "https://www.googleapis.com/books/v1/volumes"
             params = {"q": f"isbn:{self.isbn}"}
             res = requests.get(url, params=params, timeout=4)
+            if res.status_code != 200:
+                self.status_changed.emit(
+                    _provider_http_error("Google Books", res.status_code), True
+                )
+                return False, "", "", "", "", "", 0
             if res.status_code == 200:
                 data = res.json()
                 if "items" in data and len(data["items"]) > 0:
@@ -206,14 +246,17 @@ class FetchBookWorker(QThread):
                     return (True, title, authors, cover_url or "",
                             vol_info.get("publishedDate", "") or "",
                             vol_info.get("publisher", "") or "", page_count)
-        except Exception as e:
-            print(f"[API Error] Google Books skipped: {e}")
+        except requests.RequestException as error:
+            self.status_changed.emit(_provider_request_error("Google Books", error), True)
+        except ValueError as error:
+            self.status_changed.emit(f"Google Books returned invalid data: {error}", True)
         return False, "", "", "", "", "", 0
 
 
 class RefreshCoverCacheWorker(QThread):
     cover_refreshed = Signal(str, str, bool)
     refresh_finished = Signal(int, int)
+    status_changed = Signal(str, bool)
 
     def __init__(self, isbns):
         super().__init__()
@@ -224,47 +267,67 @@ class RefreshCoverCacheWorker(QThread):
         for isbn in self.isbns:
             success = False
             selected_url = ""
+            last_error = ""
             for provider in (self._open_library_urls, self._google_books_urls):
                 candidates = provider(isbn)
                 for candidate in candidates:
-                    if download_cover(isbn, candidate):
+                    downloaded, error = download_cover_with_error(isbn, candidate)
+                    if downloaded:
                         selected_url = candidate
                         success = True
                         break
+                    last_error = error
                 if success:
                     break
             if success:
                 refreshed += 1
+            elif last_error:
+                self.status_changed.emit(f"ISBN {isbn}: {last_error}", True)
             self.cover_refreshed.emit(isbn, selected_url, success)
         self.refresh_finished.emit(refreshed, len(self.isbns))
 
-    @staticmethod
-    def _open_library_urls(isbn):
+    def _open_library_urls(self, isbn):
         try:
             response = requests.get(
                 "https://openlibrary.org/api/books",
                 params={"bibkeys": f"ISBN:{isbn}", "format": "json", "jscmd": "data"},
                 timeout=4,
             )
-            response.raise_for_status()
+            if response.status_code != 200:
+                if response.status_code != 404:
+                    self.status_changed.emit(
+                        _provider_http_error("Open Library", response.status_code), True
+                    )
+                return []
             info = response.json().get(f"ISBN:{isbn}", {})
             return _open_library_cover_urls(info)
-        except (requests.RequestException, ValueError):
+        except requests.RequestException as error:
+            self.status_changed.emit(_provider_request_error("Open Library", error), True)
+            return []
+        except ValueError as error:
+            self.status_changed.emit(f"Open Library returned invalid data: {error}", True)
             return []
 
-    @staticmethod
-    def _google_books_urls(isbn):
+    def _google_books_urls(self, isbn):
         try:
             response = requests.get(
                 "https://www.googleapis.com/books/v1/volumes",
                 params={"q": f"isbn:{isbn}"},
                 timeout=4,
             )
-            response.raise_for_status()
+            if response.status_code != 200:
+                self.status_changed.emit(
+                    _provider_http_error("Google Books", response.status_code), True
+                )
+                return []
             items = response.json().get("items", [])
             if not items:
                 return []
             volume_info = items[0].get("volumeInfo", {})
             return _google_books_cover_urls(volume_info)
-        except (requests.RequestException, ValueError):
+        except requests.RequestException as error:
+            self.status_changed.emit(_provider_request_error("Google Books", error), True)
+            return []
+        except ValueError as error:
+            self.status_changed.emit(f"Google Books returned invalid data: {error}", True)
             return []

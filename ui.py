@@ -39,6 +39,7 @@ class MainWindow(QMainWindow):
         self._health_worker = None
         self._health_check_pending = False
         self._cover_downloads = set()
+        self._camera_lookup_isbns = set()
         self.sync_token = ""
         self.sync_username = ""
         self.settings = QSettings("Bookshelf", "ISBNBookScanner")
@@ -103,7 +104,7 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.scanner_view)
         main_layout.addWidget(shelf_container, stretch=1)
 
-        self.scanner_view.manual_isbn_submitted.connect(self.handle_barcode)
+        self.scanner_view.manual_isbn_submitted.connect(self.handle_manual_isbn)
         self.bookshelf_view.book_selected.connect(self.book_details_view.show_book_details)
         self.book_details_view.delete_requested.connect(self.remove_single_book)
 
@@ -307,8 +308,11 @@ class MainWindow(QMainWindow):
             self.worker = None
 
     def handle_camera_unavailable(self, message: str):
-        self.scanner_view.set_status(message, "color: #ffaa55; font-weight: bold;")
+        self.show_network_status(message, True)
         self.scanner_view.manual_input.setFocus()
+
+    def show_network_status(self, message: str, is_error: bool = False):
+        self.statusBar().showMessage(message, 15000 if is_error else 7000)
 
     def prompt_sync_auth(self, operation: str):
         if self._sync_worker is not None and self._sync_worker.isRunning():
@@ -529,6 +533,7 @@ class MainWindow(QMainWindow):
             return
 
         worker = RefreshCoverCacheWorker([book[0] for book in books])
+        worker.status_changed.connect(self.show_network_status)
         worker.cover_refreshed.connect(self.on_cover_refreshed)
         worker.refresh_finished.connect(self.on_cover_refresh_finished)
         worker.finished.connect(lambda worker=worker: self.on_cover_refresh_worker_finished(worker))
@@ -608,6 +613,7 @@ class MainWindow(QMainWindow):
         if not cover_url or isbn in self._cover_downloads or has_cached_cover(isbn):
             return
         worker = CoverDownloadWorker(isbn, cover_url)
+        worker.status_changed.connect(self.show_network_status)
         worker.cover_cached.connect(self._on_cover_cached)
         worker.finished.connect(lambda worker=worker: self._cleanup_worker(worker))
         self._cover_downloads.add(isbn)
@@ -624,29 +630,44 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def handle_barcode(self, isbn: str):
+        self._lookup_isbn(isbn, from_camera=True)
+
+    @Slot(str)
+    def handle_manual_isbn(self, isbn: str):
+        self._lookup_isbn(isbn, from_camera=False)
+
+    def _lookup_isbn(self, isbn: str, from_camera: bool):
         # Kill any pending text resets so they don't overwrite current status updates
         if self.status_reset_timer and self.status_reset_timer.isActive():
             self.status_reset_timer.stop()
 
         if isbn not in self.scanned_isbns:
             self.scanned_isbns.add(isbn)
-            self.scanner_view.set_status(f"🔍 Digging up metadata for ISBN: {isbn}...")
+            if from_camera:
+                self._camera_lookup_isbns.add(isbn)
+                self.scanner_view.set_status(f"ISBN detected: {isbn}")
+            else:
+                self.show_network_status(f"Looking up ISBN {isbn}...")
 
             fetcher = FetchBookWorker(isbn)
             fetcher.book_fetched.connect(self.save_and_render_book)
+            fetcher.status_changed.connect(self.show_network_status)
             fetcher.finished.connect(lambda: self._cleanup_worker(fetcher))
             self._active_workers.append(fetcher)
             fetcher.start()
         else:
-            self.scanner_view.set_status(f"💡 ISBN {isbn} already exists on shelf.", "color: #ffaa55;")
+            if from_camera:
+                self.scanner_view.set_status(f"ISBN {isbn} is already on the shelf.", "color: #ffaa55;")
+            else:
+                self.show_network_status(f"ISBN {isbn} is already on the shelf.")
 
-            # Use a reusable single shot timer instance rather than an un-trackable lambda closure
-            self.status_reset_timer = QTimer()
-            self.status_reset_timer.setSingleShot(True)
-            self.status_reset_timer.timeout.connect(
-                lambda: self.scanner_view.set_status("Center an ISBN barcode to add a book")
-            )
-            self.status_reset_timer.start(2000)
+            if from_camera:
+                self.status_reset_timer = QTimer()
+                self.status_reset_timer.setSingleShot(True)
+                self.status_reset_timer.timeout.connect(
+                    lambda: self.scanner_view.set_status("Center an ISBN barcode to add a book")
+                )
+                self.status_reset_timer.start(2000)
 
     @Slot(str, str, str, str, str, str, int)
     def save_and_render_book(
@@ -668,17 +689,23 @@ class MainWindow(QMainWindow):
         )
         if self.sync_token:
             self.start_sync_worker("sync")
-        self.scanner_view.set_status(f"✅ Logged: {title}")
+        camera_scan = isbn in self._camera_lookup_isbns
+        if camera_scan:
+            self._camera_lookup_isbns.discard(isbn)
+            self.scanner_view.set_status(f"Added scanned ISBN: {title}")
+        else:
+            self.show_network_status(f"Added book: {title}")
         self.book_details_view.show_book_details(
             isbn, title, author, cover_url, publication_date, publisher, page_count
         )
 
-        self.status_reset_timer = QTimer()
-        self.status_reset_timer.setSingleShot(True)
-        self.status_reset_timer.timeout.connect(
-            lambda: self.scanner_view.set_status("Center an ISBN barcode to add a book")
-        )
-        self.status_reset_timer.start(2500)
+        if camera_scan:
+            self.status_reset_timer = QTimer()
+            self.status_reset_timer.setSingleShot(True)
+            self.status_reset_timer.timeout.connect(
+                lambda: self.scanner_view.set_status("Center an ISBN barcode to add a book")
+            )
+            self.status_reset_timer.start(2500)
 
     def remove_single_book(self, isbn: str):
         if isbn in self.scanned_isbns:
@@ -688,7 +715,7 @@ class MainWindow(QMainWindow):
         remove_cached_cover(isbn)
         if self.sync_token:
             self.start_sync_worker("sync")
-        self.scanner_view.set_status("🗑️ Book removed from collection.")
+        self.show_network_status("Book removed from collection.")
 
     def _cleanup_worker(self, worker):
         if worker in self._active_workers:
