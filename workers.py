@@ -55,6 +55,8 @@ def _provider_request_error(provider, error):
 
 
 class CameraWorker(QThread):
+    MIN_SCAN_INTERVAL_SECONDS = 4.0
+
     frame_received = Signal(QImage)
     barcode_detected = Signal(str)
     camera_unavailable = Signal(str)
@@ -63,7 +65,6 @@ class CameraWorker(QThread):
         super().__init__()
         self.running = True
         self.cap = None
-        self.last_scanned_barcode = None
         self.last_scan_time = 0
 
     def run(self):
@@ -98,8 +99,7 @@ class CameraWorker(QThread):
                     barcode_data = barcode.data.decode("utf-8")
                     if len(barcode_data) in (10, 13) and barcode_data.isdigit():
                         current_time = time.time()
-                        if barcode_data != self.last_scanned_barcode or (current_time - self.last_scan_time > 2.5):
-                            self.last_scanned_barcode = barcode_data
+                        if current_time - self.last_scan_time >= self.MIN_SCAN_INTERVAL_SECONDS:
                             self.last_scan_time = current_time
                             self.barcode_detected.emit(barcode_data)
 

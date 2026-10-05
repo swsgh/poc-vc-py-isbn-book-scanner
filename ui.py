@@ -457,6 +457,7 @@ class MainWindow(QMainWindow):
         worker.auth_failed.connect(self.on_sync_failed)
         worker.sync_succeeded.connect(self.on_sync_succeeded)
         worker.sync_failed.connect(self.on_sync_failed)
+        worker.status_changed.connect(self.show_network_status)
         worker.finished.connect(lambda: self.on_sync_worker_finished(worker))
         self._sync_worker = worker
         self.statusBar().showMessage("Synchronizing bookshelf...")
@@ -645,6 +646,7 @@ class MainWindow(QMainWindow):
             self.scanned_isbns.add(isbn)
             if from_camera:
                 self._camera_lookup_isbns.add(isbn)
+                QApplication.beep()
                 self.scanner_view.set_status(f"ISBN detected: {isbn}")
             else:
                 self.show_network_status(f"Looking up ISBN {isbn}...")

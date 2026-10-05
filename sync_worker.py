@@ -45,6 +45,7 @@ class SyncWorker(QThread):
     auth_failed = Signal(str)
     sync_succeeded = Signal(list, list, int, int)
     sync_failed = Signal(str)
+    status_changed = Signal(str, bool)
 
     def __init__(self, operation, server_url, username="", password="", token=""):
         super().__init__()
@@ -153,7 +154,9 @@ class SyncWorker(QThread):
 
             cover_url = update.get("coverUrl", "") or ""
             if cover_url:
-                download_cover(isbn, cover_url)
+                downloaded, message = download_cover_with_error(isbn, cover_url)
+                if not downloaded:
+                    self.status_changed.emit(f"ISBN {isbn}: {message}", True)
             title = update.get("title", "")
             author = update.get("authors", "")
             publication_date = update.get("publicationDate", "") or ""
