@@ -657,6 +657,7 @@ class MainWindow(QMainWindow):
             fetcher.book_fetched.connect(self.save_and_render_book)
             fetcher.status_changed.connect(self.show_network_status)
             fetcher.lookup_failed.connect(self.on_book_lookup_failed)
+            fetcher.lookup_not_found.connect(self.prompt_manual_book_entry)
             fetcher.finished.connect(lambda: self._cleanup_worker(fetcher))
             self._active_workers.append(fetcher)
             fetcher.start()
@@ -681,6 +682,54 @@ class MainWindow(QMainWindow):
         self.show_network_status(message, True)
         if camera_scan:
             self.scanner_view.set_status("Center an ISBN barcode to add a book")
+
+    @Slot(str)
+    def prompt_manual_book_entry(self, isbn: str):
+        self.scanned_isbns.discard(isbn)
+        camera_scan = isbn in self._camera_lookup_isbns
+        self._camera_lookup_isbns.discard(isbn)
+        if camera_scan:
+            self.scanner_view.set_status(f"No catalog match for ISBN: {isbn}")
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Add book manually")
+        form = QFormLayout(dialog)
+        form.addRow("ISBN", QLabel(isbn, dialog))
+
+        title_input = QLineEdit(dialog)
+        title_input.setPlaceholderText("Required")
+        form.addRow("Title", title_input)
+
+        author_input = QLineEdit(dialog)
+        author_input.setPlaceholderText("Optional")
+        form.addRow("Author", author_input)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.Save | QDialogButtonBox.Cancel, parent=dialog
+        )
+        save_button = buttons.button(QDialogButtonBox.Save)
+        save_button.setEnabled(False)
+        title_input.textChanged.connect(lambda text: save_button.setEnabled(bool(text.strip())))
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+
+        title_input.setFocus()
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        title = title_input.text().strip()
+        author = author_input.text().strip()
+        if not db.save_book(isbn, title, author, "", queue_sync=True):
+            self.statusBar().showMessage("Could not save the manually entered book.", 10000)
+            return
+
+        self.scanned_isbns.add(isbn)
+        self.bookshelf_view.render_book_item(title, author, "", isbn)
+        self.book_details_view.show_book_details(isbn, title, author, "")
+        if self.sync_token:
+            self.start_sync_worker("sync")
+        self.show_network_status(f"Added book manually: {title}")
 
     @Slot(str, str, str, str, str, str, int)
     def save_and_render_book(

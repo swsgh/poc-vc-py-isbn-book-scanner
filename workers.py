@@ -100,6 +100,7 @@ class FetchBookWorker(QThread):
     book_fetched = Signal(str, str, str, str, str, str, int)
     status_changed = Signal(str, bool)
     lookup_failed = Signal(str, str)
+    lookup_not_found = Signal(str)
 
     def __init__(self, isbn: str, server_url: str, token: str):
         super().__init__()
@@ -116,6 +117,9 @@ class FetchBookWorker(QThread):
                 timeout=(5, 30),
             )
             if response.status_code != 200:
+                if response.status_code == 404:
+                    self.lookup_not_found.emit(self.isbn)
+                    return
                 detail = ""
                 try:
                     detail = response.json().get("detail", "")
