@@ -18,7 +18,7 @@ from book_details_view import BookDetailsView
 from sync_worker import CoverDownloadWorker, ServerHealthCheckWorker, SyncWorker
 
 BOOK_CSV_HEADERS = (
-    "ISBN", "Title", "Author", "Engine Source", "Cover URL",
+    "ISBN", "Title", "Author", "Cover URL",
     "First Publication Date", "Publisher", "Page Count",
 )
 
@@ -235,7 +235,6 @@ class MainWindow(QMainWindow):
                         continue
 
                     author = (row.get("Author") or "").strip()
-                    engine_source = (row.get("Engine Source") or "").strip()
                     cover_url = (row.get("Cover URL") or "").strip()
                     publication_date = (row.get("First Publication Date") or "").strip()
                     publisher = (row.get("Publisher") or "").strip()
@@ -246,11 +245,11 @@ class MainWindow(QMainWindow):
                         skipped += 1
                         continue
                     existing = db.get_book_by_isbn(isbn)
-                    if existing and existing[4] != cover_url:
+                    if existing and existing[3] != cover_url:
                         remove_cached_cover(isbn)
                     if not db.save_book(
                         isbn, title, author, cover_url,
-                        queue_sync=True, engine_source=engine_source,
+                        queue_sync=True,
                         publication_date=publication_date,
                         publisher=publisher,
                         page_count=page_count,
@@ -546,11 +545,10 @@ class MainWindow(QMainWindow):
         if book is None:
             return
 
-        (_, title, author, engine_source, current_url, publication_date,
-         publisher, page_count) = book
+        (_, title, author, current_url, publication_date, publisher, page_count) = book
         if cover_url != current_url and not db.save_book(
             isbn, title, author, cover_url, queue_sync=True,
-            engine_source=engine_source, publication_date=publication_date or "",
+            publication_date=publication_date or "",
             publisher=publisher or "", page_count=page_count or 0,
         ):
             return
@@ -597,8 +595,7 @@ class MainWindow(QMainWindow):
     def load_books_from_db(self):
         rows = db.get_all_books()
         for row in rows:
-            (isbn, title, author, _engine_source, cover_url, publication_date,
-             publisher, page_count) = row
+            (isbn, title, author, cover_url, publication_date, publisher, page_count) = row
             self.scanned_isbns.add(isbn)
             self.bookshelf_view.render_book_item(
                 title, author, cover_url, isbn,

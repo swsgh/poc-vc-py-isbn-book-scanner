@@ -61,7 +61,7 @@ Both apps use the same schema:
 
 | Table | Columns and behavior |
 | --- | --- |
-| `books` | `isbn`, `title`, `authors`, `engine_source`, `cover_url`, `publication_date`, `publisher`, `page_count` |
+| `books` | `isbn`, `title`, `authors`, `cover_url`, `publication_date`, `publisher`, `page_count` |
 | `sync_queue` | `isbn`, `action_type`; one pending action per ISBN |
 | `sync_state` | `username`, `checkpoint` |
 
@@ -102,4 +102,4 @@ The app keeps the authentication token in memory and stores per-account sync che
 
 ## CSV Import and Export
 
-Use **Import CSV...** and **Export CSV...** in the cogwheel menu. CSV files must have the exact headers `ISBN`, `Title`, `Author`, `Engine Source`, `Cover URL`, `First Publication Date`, `Publisher`, and `Page Count`, in that order. Imported books are queued for synchronization.
+Use **Import CSV...** and **Export CSV...** in the cogwheel menu. CSV files must have the exact headers `ISBN`, `Title`, `Author`, `Cover URL`, `First Publication Date`, `Publisher`, and `Page Count`, in that order. Imported books are queued for synchronization.

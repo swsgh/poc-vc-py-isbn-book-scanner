@@ -152,14 +152,12 @@ class SyncWorker(QThread):
                 download_cover(isbn, cover_url)
             title = update.get("title", "")
             author = update.get("authors", "")
-            engine_source = update.get("engineSource", "")
             publication_date = update.get("publicationDate", "") or ""
             publisher = update.get("publisher", "") or ""
             page_count = int(update.get("pageCount", 0) or 0)
             if not db.save_book(
                 isbn, title, author, cover_url,
                 queue_sync=False,
-                engine_source=engine_source,
                 publication_date=publication_date,
                 publisher=publisher,
                 page_count=page_count,
@@ -208,13 +206,11 @@ class SyncWorker(QThread):
 
     def _upload_book(self, session, token, book):
         self._check_interruption()
-        (isbn, title, author, engine_source, cover_url, publication_date,
-         publisher, page_count) = book
+        (isbn, title, author, cover_url, publication_date, publisher, page_count) = book
         metadata = json.dumps({
             "isbn": isbn,
             "title": title,
             "authors": author,
-            "engineSource": engine_source or "Python ISBN Scanner",
             "coverUrl": cover_url or "",
             "publicationDate": publication_date or "",
             "publisher": publisher or "",

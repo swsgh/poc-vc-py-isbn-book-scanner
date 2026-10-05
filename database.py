@@ -23,7 +23,6 @@ BOOKS_SCHEMA = """
         isbn TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         authors TEXT,
-        engine_source TEXT,
         cover_url TEXT,
         publication_date TEXT,
         publisher TEXT,
@@ -78,7 +77,6 @@ def save_book(
     author: str,
     cover_url: str,
     queue_sync=True,
-    engine_source="Python ISBN Scanner",
     publication_date="",
     publisher="",
     page_count=0,
@@ -88,9 +86,9 @@ def save_book(
         with _connect() as connection:
             connection.execute(
                 "INSERT OR REPLACE INTO books "
-                "(isbn, title, authors, engine_source, cover_url, publication_date, publisher, page_count) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (isbn, title, author, engine_source, cover_url,
+                "(isbn, title, authors, cover_url, publication_date, publisher, page_count) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (isbn, title, author, cover_url,
                  publication_date, publisher, page_count),
             )
             if queue_sync:
@@ -105,7 +103,7 @@ def get_all_books():
     """Retrieves all stored books from the shelf database collection rows."""
     with _connect() as connection:
         return connection.execute(
-            "SELECT isbn, title, authors, engine_source, cover_url, publication_date, publisher, page_count "
+            "SELECT isbn, title, authors, cover_url, publication_date, publisher, page_count "
             "FROM books"
         ).fetchall()
 
@@ -113,7 +111,7 @@ def get_all_books():
 def get_book_by_isbn(isbn: str):
     with _connect() as connection:
         return connection.execute(
-            "SELECT isbn, title, authors, engine_source, cover_url, publication_date, publisher, page_count "
+            "SELECT isbn, title, authors, cover_url, publication_date, publisher, page_count "
             "FROM books WHERE isbn = ?",
             (isbn,),
         ).fetchone()
