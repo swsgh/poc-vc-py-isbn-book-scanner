@@ -11,7 +11,7 @@ from PySide6.QtGui import QAction
 
 import database as db
 from cover_cache import has_cached_cover, is_server_cover_url, remove_cached_cover, server_cover_headers
-from workers import CameraWorker, FetchBookWorker, RefreshCoverCacheWorker
+from workers import CameraWorker, FetchBookWorker
 from scanner_view import ScannerView
 from bookshelf_view import BookshelfView
 from book_details_view import BookDetailsView
@@ -35,7 +35,6 @@ class MainWindow(QMainWindow):
         self.worker = None
         self._sync_worker = None
         self._sync_requested = False
-        self._cover_refresh_worker = None
         self._health_worker = None
         self._health_check_pending = False
         self._cover_downloads = set()
@@ -164,15 +163,12 @@ class MainWindow(QMainWindow):
         self.sync_action = QAction("Sync Now", self)
         self.sync_action.setEnabled(False)
         self.sync_action.triggered.connect(self.sync_now)
-        self.refresh_covers_action = QAction("Refresh Cover Image Cache", self)
-        self.refresh_covers_action.triggered.connect(self.refresh_cover_image_cache)
         self.logout_action = QAction("Log Out of Sync", self)
         self.logout_action.setEnabled(False)
         self.logout_action.triggered.connect(self.logout_sync)
 
         self.settings_menu.addAction(self.login_action)
         self.settings_menu.addAction(self.sync_action)
-        self.settings_menu.addAction(self.refresh_covers_action)
         self.settings_menu.addAction(self.logout_action)
         self.settings_menu.addSeparator()
         self.settings_menu.addAction(self.register_action)
@@ -527,66 +523,6 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Log in before synchronizing.", 5000)
             return
         self.start_sync_worker("sync")
-
-    def refresh_cover_image_cache(self):
-        if self._cover_refresh_worker is not None and self._cover_refresh_worker.isRunning():
-            self.statusBar().showMessage("Cover image refresh is already running.", 5000)
-            return
-        if not self.sync_token:
-            self.show_network_status("Sign in to refresh server cover images.", True)
-            return
-
-        books = db.get_all_books()
-        if not books:
-            self.statusBar().showMessage("There are no covers to refresh.", 5000)
-            return
-
-        server_covers = [
-            (book[0], book[3]) for book in books
-            if book[3] and is_server_cover_url(book[3], self.sync_server_url)
-        ]
-        if not server_covers:
-            self.statusBar().showMessage("There are no server-cached covers to refresh.", 5000)
-            return
-
-        worker = RefreshCoverCacheWorker(
-            server_covers, self.sync_server_url, self.sync_token
-        )
-        worker.status_changed.connect(self.show_network_status)
-        worker.cover_refreshed.connect(self.on_cover_refreshed)
-        worker.refresh_finished.connect(self.on_cover_refresh_finished)
-        worker.finished.connect(lambda worker=worker: self.on_cover_refresh_worker_finished(worker))
-        self._cover_refresh_worker = worker
-        self._active_workers.append(worker)
-        self.refresh_covers_action.setEnabled(False)
-        self.statusBar().showMessage(f"Refreshing cover images for {len(books)} books...")
-        worker.start()
-
-    def on_cover_refreshed(self, isbn: str, cover_url: str, succeeded: bool):
-        if not succeeded or not cover_url:
-            return
-        book = db.get_book_by_isbn(isbn)
-        if book is None:
-            return
-
-        (_, title, author, current_url, publication_date, publisher, page_count) = book
-        self.bookshelf_view.refresh_item_cover(isbn)
-        if self.book_details_view.current_isbn == isbn:
-            self.book_details_view.show_book_details(
-                isbn, title, author, cover_url,
-                publication_date or "", publisher or "", page_count or 0,
-            )
-
-    def on_cover_refresh_finished(self, refreshed: int, total: int):
-        self.statusBar().showMessage(
-            f"Refreshed {refreshed} of {total} cover images.", 10000
-        )
-
-    def on_cover_refresh_worker_finished(self, worker):
-        if self._cover_refresh_worker is worker:
-            self._cover_refresh_worker = None
-        self.refresh_covers_action.setEnabled(True)
-        self._cleanup_worker(worker)
 
     def logout_sync(self):
         if self._sync_worker is not None and self._sync_worker.isRunning():

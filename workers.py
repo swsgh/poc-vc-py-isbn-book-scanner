@@ -166,31 +166,3 @@ class FetchBookWorker(QThread):
             self.lookup_failed.emit(self.isbn, f"Invalid book lookup response: {error}")
 
 
-class RefreshCoverCacheWorker(QThread):
-    cover_refreshed = Signal(str, str, bool)
-    refresh_finished = Signal(int, int)
-    status_changed = Signal(str, bool)
-
-    def __init__(self, books, server_url, token):
-        super().__init__()
-        self.books = list(books)
-        self.server_url = server_url
-        self.token = token
-
-    def run(self):
-        refreshed = 0
-        for isbn, cover_url in self.books:
-            if not cover_url:
-                self.status_changed.emit(f"ISBN {isbn} has no cached server cover URL.", False)
-                self.cover_refreshed.emit(isbn, "", False)
-                continue
-            success, error = download_cover_with_error(
-                isbn, cover_url,
-                headers=server_cover_headers(cover_url, self.server_url, self.token),
-            )
-            if success:
-                refreshed += 1
-            elif error:
-                self.status_changed.emit(f"ISBN {isbn}: {error}", True)
-            self.cover_refreshed.emit(isbn, cover_url, success)
-        self.refresh_finished.emit(refreshed, len(self.books))
