@@ -1,7 +1,55 @@
 from PySide6.QtCore import Qt, QSize, Signal
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QMessageBox
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QMessageBox,
+    QDialog, QSizePolicy,
+)
 from PySide6.QtGui import QImage, QPixmap, QFont, QPalette
 from cover_cache import cover_path, has_cached_cover
+
+
+class ClickableCoverLabel(QLabel):
+    clicked = Signal()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
+
+
+class CoverZoomDialog(QDialog):
+    def __init__(self, pixmap: QPixmap, parent=None):
+        super().__init__(parent, Qt.Dialog | Qt.FramelessWindowHint)
+        self._source_pixmap = pixmap
+        self.setModal(True)
+        self.setStyleSheet("QDialog { background-color: rgba(16, 16, 16, 235); }")
+        if parent:
+            self.setGeometry(parent.geometry())
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 12, 16, 16)
+        header = QHBoxLayout()
+        header.addStretch()
+        close_button = QPushButton("×", self)
+        close_button.setAccessibleName("Close enlarged cover")
+        close_button.clicked.connect(self.reject)
+        header.addWidget(close_button)
+        layout.addLayout(header)
+
+        self.image_label = QLabel(self)
+        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout.addWidget(self.image_label, stretch=1)
+        self._update_cover_pixmap()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_cover_pixmap()
+
+    def _update_cover_pixmap(self):
+        if not self._source_pixmap.isNull() and hasattr(self, "image_label"):
+            self.image_label.setPixmap(self._source_pixmap.scaled(
+                self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ))
 
 
 class BookDetailsView(QWidget):
@@ -37,9 +85,11 @@ class BookDetailsView(QWidget):
         header_layout.addWidget(self.close_btn)
         container_layout.addLayout(header_layout)
 
-        self.cover_label = QLabel(self.container)
+        self.cover_label = ClickableCoverLabel(self.container)
         self.cover_label.setAlignment(Qt.AlignCenter)
         self.cover_label.setFixedSize(QSize(200, 275))
+        self.cover_label.setCursor(Qt.PointingHandCursor)
+        self.cover_label.clicked.connect(self.show_cover_overlay)
         container_layout.addWidget(self.cover_label, alignment=Qt.AlignCenter)
 
         self.title_label = QLabel("Select a book to inspect details", self.container)
@@ -163,6 +213,12 @@ class BookDetailsView(QWidget):
             self.cover_label.setPixmap(pixmap.scaled(
                 self.cover_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
             ))
+
+    def show_cover_overlay(self):
+        if not self.current_isbn or not has_cached_cover(self.current_isbn):
+            return
+        dialog = CoverZoomDialog(QPixmap(str(cover_path(self.current_isbn))), self.window())
+        dialog.exec()
 
     def on_delete_clicked(self):
         if not self.current_isbn:
