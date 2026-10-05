@@ -171,14 +171,14 @@ class MainWindow(QMainWindow):
         self.settings_menu.addAction(self.sync_action)
         self.settings_menu.addAction(self.logout_action)
         self.settings_menu.addSeparator()
-        self.settings_menu.addAction(self.register_action)
-        self.settings_menu.addSeparator()
         self.import_csv_action = QAction("Import CSV...", self)
         self.import_csv_action.triggered.connect(self.import_books_csv)
         self.export_csv_action = QAction("Export CSV...", self)
         self.export_csv_action.triggered.connect(self.export_books_csv)
         self.settings_menu.addAction(self.import_csv_action)
         self.settings_menu.addAction(self.export_csv_action)
+        self.settings_menu.addSeparator()
+        self.settings_menu.addAction(self.register_action)
 
         # Bind context dropdown display directly to our custom cog action button anchor
         self.settings_btn.setMenu(self.settings_menu)
