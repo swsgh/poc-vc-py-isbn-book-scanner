@@ -1,10 +1,10 @@
 import sys
 import time
-from urllib.parse import urljoin
+from urllib.parse import quote
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QImage
 import requests
-from cover_cache import download_cover_with_error
+from cover_cache import download_cover_with_error, server_cover_headers
 
 # Conditional compilation setup: only import desktop modules when not on Android
 ON_ANDROID = (sys.platform == "android") or hasattr(sys, "getandroidsdk")
@@ -135,10 +135,15 @@ class FetchBookWorker(QThread):
             for warning in data.get("warnings", []):
                 self.status_changed.emit(str(warning), False)
 
-            cover_url = data.get("coverUrl", "") or ""
+            cover_url = (
+                f"{self.server_url}/api/books/cover/{quote(self.isbn, safe='')}"
+                if data.get("hasCover", False) else ""
+            )
             if cover_url:
-                cover_url = urljoin(self.server_url + "/", cover_url)
-                succeeded, message = download_cover_with_error(self.isbn, cover_url)
+                headers = {"Authorization": f"Bearer {self.token}"}
+                succeeded, message = download_cover_with_error(
+                    self.isbn, cover_url, headers=headers
+                )
                 if not succeeded:
                     self.status_changed.emit(f"Cover image: {message}", True)
 
@@ -166,9 +171,11 @@ class RefreshCoverCacheWorker(QThread):
     refresh_finished = Signal(int, int)
     status_changed = Signal(str, bool)
 
-    def __init__(self, books):
+    def __init__(self, books, server_url, token):
         super().__init__()
         self.books = list(books)
+        self.server_url = server_url
+        self.token = token
 
     def run(self):
         refreshed = 0
@@ -177,7 +184,10 @@ class RefreshCoverCacheWorker(QThread):
                 self.status_changed.emit(f"ISBN {isbn} has no cached server cover URL.", False)
                 self.cover_refreshed.emit(isbn, "", False)
                 continue
-            success, error = download_cover_with_error(isbn, cover_url)
+            success, error = download_cover_with_error(
+                isbn, cover_url,
+                headers=server_cover_headers(cover_url, self.server_url, self.token),
+            )
             if success:
                 refreshed += 1
             elif error:

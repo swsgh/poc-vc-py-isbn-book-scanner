@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PySide6.QtGui import QAction
 
 import database as db
-from cover_cache import has_cached_cover, remove_cached_cover
+from cover_cache import has_cached_cover, is_server_cover_url, remove_cached_cover, server_cover_headers
 from workers import CameraWorker, FetchBookWorker, RefreshCoverCacheWorker
 from scanner_view import ScannerView
 from bookshelf_view import BookshelfView
@@ -473,6 +473,11 @@ class MainWindow(QMainWindow):
         self.sync_action.setEnabled(True)
         self.logout_action.setEnabled(True)
         self.statusBar().showMessage(f"Signed in to sync as {username}.", 5000)
+        for book in db.get_all_books():
+            isbn, _, _, cover_url, *_ = book
+            if (cover_url and is_server_cover_url(cover_url, self.sync_server_url)
+                    and not has_cached_cover(isbn)):
+                self._download_cover(isbn, cover_url)
 
     def on_sync_succeeded(self, downloaded, removed, uploaded: int, deleted: int):
         for (isbn, title, author, cover_url, publication_date,
@@ -527,13 +532,26 @@ class MainWindow(QMainWindow):
         if self._cover_refresh_worker is not None and self._cover_refresh_worker.isRunning():
             self.statusBar().showMessage("Cover image refresh is already running.", 5000)
             return
+        if not self.sync_token:
+            self.show_network_status("Sign in to refresh server cover images.", True)
+            return
 
         books = db.get_all_books()
         if not books:
             self.statusBar().showMessage("There are no covers to refresh.", 5000)
             return
 
-        worker = RefreshCoverCacheWorker([(book[0], book[3]) for book in books])
+        server_covers = [
+            (book[0], book[3]) for book in books
+            if book[3] and is_server_cover_url(book[3], self.sync_server_url)
+        ]
+        if not server_covers:
+            self.statusBar().showMessage("There are no server-cached covers to refresh.", 5000)
+            return
+
+        worker = RefreshCoverCacheWorker(
+            server_covers, self.sync_server_url, self.sync_token
+        )
         worker.status_changed.connect(self.show_network_status)
         worker.cover_refreshed.connect(self.on_cover_refreshed)
         worker.refresh_finished.connect(self.on_cover_refresh_finished)
@@ -552,13 +570,6 @@ class MainWindow(QMainWindow):
             return
 
         (_, title, author, current_url, publication_date, publisher, page_count) = book
-        if cover_url != current_url and not db.save_book(
-            isbn, title, author, cover_url, queue_sync=True,
-            publication_date=publication_date or "",
-            publisher=publisher or "", page_count=page_count or 0,
-        ):
-            return
-
         self.bookshelf_view.refresh_item_cover(isbn)
         if self.book_details_view.current_isbn == isbn:
             self.book_details_view.show_book_details(
@@ -611,7 +622,11 @@ class MainWindow(QMainWindow):
     def _download_cover(self, isbn: str, cover_url: str):
         if not cover_url or isbn in self._cover_downloads or has_cached_cover(isbn):
             return
-        worker = CoverDownloadWorker(isbn, cover_url)
+        if (is_server_cover_url(cover_url, self.sync_server_url)
+                and not self.sync_token):
+            return
+        headers = server_cover_headers(cover_url, self.sync_server_url, self.sync_token)
+        worker = CoverDownloadWorker(isbn, cover_url, headers)
         worker.status_changed.connect(self.show_network_status)
         worker.cover_cached.connect(self._on_cover_cached)
         worker.finished.connect(lambda worker=worker: self._cleanup_worker(worker))

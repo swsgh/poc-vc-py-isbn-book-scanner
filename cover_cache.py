@@ -22,17 +22,41 @@ def has_cached_cover(isbn: str) -> bool:
     return cover_path(isbn).is_file()
 
 
-def download_cover(isbn: str, url: str) -> bool:
-    return download_cover_with_error(isbn, url)[0]
+def is_server_cover_url(url: str, server_url: str) -> bool:
+    try:
+        parsed_url = urlsplit(url)
+        parsed_server = urlsplit(server_url)
+        url_port = parsed_url.port or (443 if parsed_url.scheme.lower() == "https" else 80)
+        server_port = parsed_server.port or (443 if parsed_server.scheme.lower() == "https" else 80)
+        return (
+            parsed_url.scheme.lower() == parsed_server.scheme.lower()
+            and parsed_url.hostname == parsed_server.hostname
+            and url_port == server_port
+            and parsed_url.path.startswith("/api/books/cover/")
+        )
+    except ValueError:
+        return False
 
 
-def download_cover_with_error(isbn: str, url: str) -> tuple[bool, str]:
+def server_cover_headers(url: str, server_url: str, token: str) -> dict[str, str]:
+    if token and is_server_cover_url(url, server_url):
+        return {"Authorization": f"Bearer {token}"}
+    return {}
+
+
+def download_cover(isbn: str, url: str, headers: dict[str, str] | None = None) -> bool:
+    return download_cover_with_error(isbn, url, headers=headers)[0]
+
+
+def download_cover_with_error(
+    isbn: str, url: str, headers: dict[str, str] | None = None
+) -> tuple[bool, str]:
     try:
         parsed_url = urlsplit(url)
         if parsed_url.scheme.lower() not in ("http", "https") or not parsed_url.hostname:
             return False, "Invalid cover image URL."
 
-        response = requests.get(url, timeout=(5, 15))
+        response = requests.get(url, headers=headers, timeout=(5, 15))
         if response.status_code == 429:
             return False, "Cover image rate limit reached (HTTP 429). Try again shortly."
         if not response.ok:

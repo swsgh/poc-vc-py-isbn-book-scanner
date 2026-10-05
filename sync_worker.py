@@ -28,13 +28,16 @@ class CoverDownloadWorker(QThread):
     cover_cached = Signal(str, bool)
     status_changed = Signal(str, bool)
 
-    def __init__(self, isbn, cover_url):
+    def __init__(self, isbn, cover_url, headers=None):
         super().__init__()
         self.isbn = isbn
         self.cover_url = cover_url
+        self.headers = headers or {}
 
     def run(self):
-        succeeded, message = download_cover_with_error(self.isbn, self.cover_url)
+        succeeded, message = download_cover_with_error(
+            self.isbn, self.cover_url, headers=self.headers
+        )
         if not succeeded:
             self.status_changed.emit(f"ISBN {self.isbn}: {message}", True)
         self.cover_cached.emit(self.isbn, succeeded)
@@ -152,11 +155,10 @@ class SyncWorker(QThread):
                 removed.append(isbn)
                 continue
 
-            cover_url = update.get("coverUrl", "") or ""
-            if cover_url:
-                downloaded, message = download_cover_with_error(isbn, cover_url)
-                if not downloaded:
-                    self.status_changed.emit(f"ISBN {isbn}: {message}", True)
+            cover_url = (
+                f"{self.server_url}/api/books/cover/{quote(isbn, safe='')}"
+                if update.get("hasCover", False) else ""
+            )
             title = update.get("title", "")
             author = update.get("authors", "")
             publication_date = update.get("publicationDate", "") or ""
@@ -213,12 +215,11 @@ class SyncWorker(QThread):
 
     def _upload_book(self, session, token, book):
         self._check_interruption()
-        (isbn, title, author, cover_url, publication_date, publisher, page_count) = book
+        (isbn, title, author, _cover_url, publication_date, publisher, page_count) = book
         metadata = json.dumps({
             "isbn": isbn,
             "title": title,
             "authors": author,
-            "coverUrl": cover_url or "",
             "publicationDate": publication_date or "",
             "publisher": publisher or "",
             "pageCount": page_count or 0,
