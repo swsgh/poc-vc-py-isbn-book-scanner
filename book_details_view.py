@@ -37,9 +37,11 @@ class CoverZoomDialog(QDialog):
 
         self.image_label = QLabel(self)
         self.image_label.setAlignment(Qt.AlignCenter)
-        self.image_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.image_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         layout.addWidget(self.image_label, stretch=1)
         self._update_cover_pixmap()
+        if parent:
+            self.setFixedSize(parent.size())
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
