@@ -39,7 +39,7 @@ class BookDetailsView(QWidget):
 
         self.cover_label = QLabel(self.container)
         self.cover_label.setAlignment(Qt.AlignCenter)
-        self.cover_label.setFixedSize(QSize(160, 220))
+        self.cover_label.setFixedSize(QSize(200, 275))
         container_layout.addWidget(self.cover_label, alignment=Qt.AlignCenter)
 
         self.title_label = QLabel("Select a book to inspect details", self.container)
@@ -122,7 +122,7 @@ class BookDetailsView(QWidget):
 
     def _show_placeholder_cover(self, palette=None):
         palette = palette or self.palette()
-        image = QImage(160, 220, QImage.Format_RGB888)
+        image = QImage(200, 275, QImage.Format_RGB888)
         image.fill(palette.color(QPalette.AlternateBase))
         self.cover_label.setPixmap(QPixmap.fromImage(image))
 
