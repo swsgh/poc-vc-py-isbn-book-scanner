@@ -13,6 +13,29 @@ if not ON_ANDROID:
     from pyzbar.pyzbar import decode, ZBarSymbol
 
 
+def _unique_cover_urls(urls):
+    result = []
+    for url in urls:
+        if url:
+            normalized = url.replace("http://", "https://", 1) if url.startswith("http://") else url
+            if normalized not in result:
+                result.append(normalized)
+    return result
+
+
+def _open_library_cover_urls(info):
+    cover = info.get("cover", {})
+    return _unique_cover_urls((cover.get(size) for size in ("large", "medium", "small")))
+
+
+def _google_books_cover_urls(volume_info):
+    image_links = volume_info.get("imageLinks", {})
+    return _unique_cover_urls(
+        image_links.get(size)
+        for size in ("extraLarge", "large", "medium", "small", "thumbnail", "smallThumbnail")
+    )
+
+
 class CameraWorker(QThread):
     frame_received = Signal(QImage)
     barcode_detected = Signal(str)
@@ -83,15 +106,25 @@ class FetchBookWorker(QThread):
     def __init__(self, isbn: str):
         super().__init__()
         self.isbn = isbn
+        self.cover_candidates = []
 
     def run(self):
         success, title, author, cover_url, publication_date, publisher, page_count = (
             self.fetch_from_open_library()
         )
+        used_google_books = False
         if not success or title.startswith("Unknown Book"):
-            success, title, author, cover_url, publication_date, publisher, page_count = (
-                self.fetch_from_google_books()
-            )
+            google_result = self.fetch_from_google_books()
+            used_google_books = True
+            if google_result[0]:
+                (success, title, author, cover_url, publication_date, publisher, page_count) = (
+                    google_result
+                )
+        elif not self.cover_candidates:
+            google_result = self.fetch_from_google_books()
+            used_google_books = True
+            if google_result[0] and google_result[3]:
+                cover_url = google_result[3]
 
         if not success:
             title = f"Unknown Book ({self.isbn})"
@@ -101,11 +134,27 @@ class FetchBookWorker(QThread):
             publisher = ""
             page_count = 0
 
-        if cover_url:
-            download_cover(self.isbn, cover_url)
+        cover_url = self._download_best_cover(cover_url)
+        if not cover_url and not used_google_books:
+            google_result = self.fetch_from_google_books()
+            if google_result[0]:
+                google_cover_url = self._download_best_cover(google_result[3])
+                if google_cover_url:
+                    (success, title, author, _, publication_date, publisher, page_count) = (
+                        google_result
+                    )
+                    cover_url = google_cover_url
+        if not cover_url:
+            cover_url = ""
         self.book_fetched.emit(
             self.isbn, title, author, cover_url, publication_date, publisher, page_count
         )
+
+    def _download_best_cover(self, cover_url):
+        for candidate in self.cover_candidates or ([cover_url] if cover_url else []):
+            if download_cover(self.isbn, candidate):
+                return candidate
+        return ""
 
     def fetch_from_open_library(self):
         try:
@@ -120,7 +169,8 @@ class FetchBookWorker(QThread):
                     title = info.get("title", "Unknown Title")
                     authors = ", ".join([a.get("name", "Unknown") for a in info.get("authors", [])]) or "Unknown Author"
 
-                    cover_url = info.get("cover", {}).get("medium") or info.get("cover", {}).get("small")
+                    self.cover_candidates = _open_library_cover_urls(info)
+                    cover_url = self.cover_candidates[0] if self.cover_candidates else ""
                     publishers = info.get("publishers", [])
                     first_publisher = publishers[0] if publishers else ""
                     if isinstance(first_publisher, dict):
@@ -147,11 +197,8 @@ class FetchBookWorker(QThread):
                     title = vol_info.get("title", "Unknown Title")
                     authors = ", ".join(vol_info.get("authors", [])) or "Unknown Author"
 
-                    img_links = vol_info.get("imageLinks", {})
-                    cover_url = img_links.get("thumbnail") or img_links.get("smallThumbnail")
-                    if cover_url:
-                        if cover_url.startswith("http://"):
-                            cover_url = cover_url.replace("http://", "https://")
+                    self.cover_candidates = _google_books_cover_urls(vol_info)
+                    cover_url = self.cover_candidates[0] if self.cover_candidates else ""
                     try:
                         page_count = int(vol_info.get("pageCount") or 0)
                     except (TypeError, ValueError):
@@ -162,3 +209,62 @@ class FetchBookWorker(QThread):
         except Exception as e:
             print(f"[API Error] Google Books skipped: {e}")
         return False, "", "", "", "", "", 0
+
+
+class RefreshCoverCacheWorker(QThread):
+    cover_refreshed = Signal(str, str, bool)
+    refresh_finished = Signal(int, int)
+
+    def __init__(self, isbns):
+        super().__init__()
+        self.isbns = list(isbns)
+
+    def run(self):
+        refreshed = 0
+        for isbn in self.isbns:
+            success = False
+            selected_url = ""
+            for provider in (self._open_library_urls, self._google_books_urls):
+                candidates = provider(isbn)
+                for candidate in candidates:
+                    if download_cover(isbn, candidate):
+                        selected_url = candidate
+                        success = True
+                        break
+                if success:
+                    break
+            if success:
+                refreshed += 1
+            self.cover_refreshed.emit(isbn, selected_url, success)
+        self.refresh_finished.emit(refreshed, len(self.isbns))
+
+    @staticmethod
+    def _open_library_urls(isbn):
+        try:
+            response = requests.get(
+                "https://openlibrary.org/api/books",
+                params={"bibkeys": f"ISBN:{isbn}", "format": "json", "jscmd": "data"},
+                timeout=4,
+            )
+            response.raise_for_status()
+            info = response.json().get(f"ISBN:{isbn}", {})
+            return _open_library_cover_urls(info)
+        except (requests.RequestException, ValueError):
+            return []
+
+    @staticmethod
+    def _google_books_urls(isbn):
+        try:
+            response = requests.get(
+                "https://www.googleapis.com/books/v1/volumes",
+                params={"q": f"isbn:{isbn}"},
+                timeout=4,
+            )
+            response.raise_for_status()
+            items = response.json().get("items", [])
+            if not items:
+                return []
+            volume_info = items[0].get("volumeInfo", {})
+            return _google_books_cover_urls(volume_info)
+        except (requests.RequestException, ValueError):
+            return []
