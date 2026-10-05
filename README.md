@@ -6,12 +6,12 @@ A PySide6 desktop app for scanning ISBN barcodes, looking up book details, and m
 
 - Open the scanner view to start the OpenCV camera worker; hiding the view stops capture. The camera uses device index 0.
 - Use manual entry when a camera is unavailable. Input accepts 10- or 13-digit ISBNs, with hyphens allowed.
-- Look up metadata through Open Library, with Google Books as a fallback.
+- Send scanned or manually entered ISBNs to the authenticated sync server for metadata lookup.
 - Browse, search, inspect, and remove books in the local library.
 - Import and export the library as CSV from the cogwheel menu.
-- Store book metadata and cover URLs in SQLite; downloaded image files live in the local cache.
+- Store server-returned book metadata and cover URLs in SQLite; download the server-cached covers into the local image cache.
 
-The app can synchronize with the companion FastAPI server project. Local changes are queued while offline and retried the next time synchronization runs.
+The app uses the companion FastAPI server for ISBN lookup and synchronization. Local changes are queued while offline and retried the next time synchronization runs. Sign in before scanning or submitting a manual ISBN.
 
 ## Requirements and setup
 
@@ -79,7 +79,7 @@ Each filename is the SHA-256 hash of its ISBN with an `.img` extension. The cach
 
 ### Database compatibility and connectivity
 
-The updated schema does not migrate older client databases. Delete the old client database before running either app. Metadata lookups require an internet connection. Without a working camera, use the manual ISBN field.
+The updated schema does not migrate older client databases. Delete the old client database before running either app. ISBN lookup requires a connection to the authenticated sync server. Without a working camera, use the manual ISBN field.
 
 ## Synchronization
 

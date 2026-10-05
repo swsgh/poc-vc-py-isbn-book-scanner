@@ -533,7 +533,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("There are no covers to refresh.", 5000)
             return
 
-        worker = RefreshCoverCacheWorker([book[0] for book in books])
+        worker = RefreshCoverCacheWorker([(book[0], book[3]) for book in books])
         worker.status_changed.connect(self.show_network_status)
         worker.cover_refreshed.connect(self.on_cover_refreshed)
         worker.refresh_finished.connect(self.on_cover_refresh_finished)
@@ -570,8 +570,6 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"Refreshed {refreshed} of {total} cover images.", 10000
         )
-        if refreshed and self.sync_token:
-            self.start_sync_worker("sync")
 
     def on_cover_refresh_worker_finished(self, worker):
         if self._cover_refresh_worker is worker:
@@ -642,6 +640,10 @@ class MainWindow(QMainWindow):
         if self.status_reset_timer and self.status_reset_timer.isActive():
             self.status_reset_timer.stop()
 
+        if not self.sync_token:
+            self.show_network_status("Sign in to the sync server to look up books.", True)
+            return
+
         if isbn not in self.scanned_isbns:
             self.scanned_isbns.add(isbn)
             if from_camera:
@@ -651,9 +653,10 @@ class MainWindow(QMainWindow):
             else:
                 self.show_network_status(f"Looking up ISBN {isbn}...")
 
-            fetcher = FetchBookWorker(isbn)
+            fetcher = FetchBookWorker(isbn, self.sync_server_url, self.sync_token)
             fetcher.book_fetched.connect(self.save_and_render_book)
             fetcher.status_changed.connect(self.show_network_status)
+            fetcher.lookup_failed.connect(self.on_book_lookup_failed)
             fetcher.finished.connect(lambda: self._cleanup_worker(fetcher))
             self._active_workers.append(fetcher)
             fetcher.start()
@@ -671,6 +674,14 @@ class MainWindow(QMainWindow):
                 )
                 self.status_reset_timer.start(2000)
 
+    def on_book_lookup_failed(self, isbn: str, message: str):
+        self.scanned_isbns.discard(isbn)
+        camera_scan = isbn in self._camera_lookup_isbns
+        self._camera_lookup_isbns.discard(isbn)
+        self.show_network_status(message, True)
+        if camera_scan:
+            self.scanner_view.set_status("Center an ISBN barcode to add a book")
+
     @Slot(str, str, str, str, str, str, int)
     def save_and_render_book(
         self, isbn: str, title: str, author: str, cover_url: str,
@@ -681,6 +692,7 @@ class MainWindow(QMainWindow):
 
         db.save_book(
             isbn, title, author, cover_url,
+            queue_sync=False,
             publication_date=publication_date,
             publisher=publisher,
             page_count=page_count,
@@ -689,8 +701,6 @@ class MainWindow(QMainWindow):
             title, author, cover_url, isbn,
             publication_date, publisher, page_count,
         )
-        if self.sync_token:
-            self.start_sync_worker("sync")
         camera_scan = isbn in self._camera_lookup_isbns
         if camera_scan:
             self._camera_lookup_isbns.discard(isbn)
