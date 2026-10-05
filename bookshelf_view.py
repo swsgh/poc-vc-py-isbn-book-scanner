@@ -89,7 +89,7 @@ class BookshelfView(QWidget):
     @staticmethod
     def _make_placeholder_cover(title: str, palette) -> QPixmap:
         placeholder = QImage(108, 130, QImage.Format_RGB888)
-        placeholder.fill(palette.color(QPalette.AlternateBase))
+        placeholder.fill(palette.color(QPalette.Base))
         painter = QPainter(placeholder)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setPen(palette.color(QPalette.Mid))
