@@ -471,9 +471,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Signed in to sync as {username}.", 5000)
         for book in db.get_all_books():
             isbn, _, _, cover_url, *_ = book
-            if (cover_url and is_server_cover_url(cover_url, self.sync_server_url)
-                    and not has_cached_cover(isbn)):
-                self._download_cover(isbn, cover_url)
+            if cover_url and is_server_cover_url(cover_url, self.sync_server_url):
+                self._download_cover(isbn, cover_url, force_refresh=True)
 
     def on_sync_succeeded(self, downloaded, removed, uploaded: int, deleted: int):
         for (isbn, title, author, cover_url, publication_date,
@@ -484,8 +483,8 @@ class MainWindow(QMainWindow):
                 title, author, cover_url, isbn,
                 publication_date, publisher, page_count,
             )
-            if cover_url and not has_cached_cover(isbn):
-                self._download_cover(isbn, cover_url)
+            if cover_url:
+                self._download_cover(isbn, cover_url, force_refresh=True)
             if self.book_details_view.current_isbn == isbn:
                 self.book_details_view.show_book_details(
                     isbn, title, author, cover_url,
@@ -555,8 +554,9 @@ class MainWindow(QMainWindow):
             if cover_url and not has_cached_cover(isbn):
                 self._download_cover(isbn, cover_url)
 
-    def _download_cover(self, isbn: str, cover_url: str):
-        if not cover_url or isbn in self._cover_downloads or has_cached_cover(isbn):
+    def _download_cover(self, isbn: str, cover_url: str, force_refresh: bool = False):
+        if (not cover_url or isbn in self._cover_downloads
+                or (has_cached_cover(isbn) and not force_refresh)):
             return
         if (is_server_cover_url(cover_url, self.sync_server_url)
                 and not self.sync_token):
