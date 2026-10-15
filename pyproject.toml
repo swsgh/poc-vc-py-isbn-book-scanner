@@ -1,5 +1,5 @@
 [project]
-name = "PySide Project"
+name = "ISBNBookScanner Python"
 
 [tool.pyside6-project]
 files = ["README.md", "book_details_view.py", "bookshelf_view.py", "database.py", "main.py", "scanner_view.py", "sync_worker.py", "ui.py", "workers.py"]
